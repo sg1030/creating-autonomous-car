@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Map name argument -->
+  <arg name="map"  description="Name of the map to load for localization"/>
+
+  <!-- Config and map paths -->
+  <let name="localize_config" value="$(find-pkg-share stack_master)/config/pf.yaml"/>
+  <!-- Crawl backwards to find the maps in the src folder -->
+  <let name="maps_dir" value="$(find-pkg-prefix stack_master)/../../src/stack_master/maps"/>
+  <let name="map_yaml" value="$(var maps_dir)/$(var map)/$(var map).yaml"/>
+
+  <!-- Nav2 Lifecycle Manager -->
+  <node pkg="nav2_lifecycle_manager" exec="lifecycle_manager"
+        name="lifecycle_manager_localization"
+        output="screen">
+    <param name="use_sim_time" value="true"/>
+    <param name="autostart" value="true"/>
+    <param name="node_names" value="['map_server']"/>
+  </node>
+
+  <!-- Nav2 Map Server -->
+  <node pkg="nav2_map_server" exec="map_server"
+        name="map_server"
+        output="screen">
+    <param name="yaml_filename" value="$(var map_yaml)"/>
+    <param name="topic" value="map"/>
+    <param name="frame_id" value="map"/>
+    <param name="use_sim_time" value="true"/>
+  </node>
+
+  <!-- Particle Filter Node -->
+  <node pkg="particle_filter" exec="particle_filter"
+        name="particle_filter"
+        output="screen">
+    <param from="$(var localize_config)"/>
+  </node>
+
+</launch>
