@@ -19,15 +19,15 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 ### 1. Clone Repository
 
 ```bash
-mkdir -p ~/unicorn_beginner_ws/src
-cd ~/unicorn_beginner_ws/src
+mkdir -p ~/creating_autonmous_car_ws/src
+cd ~/creating_autonmous_car_ws/src
 git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git
 ```
 
 ### 2. Install Dependencies
 
 ```bash
-cd ~/unicorn_beginner_ws
+cd ~/creating_autonmous_car_ws
 
 # Initialize rosdep (first time only)
 sudo apt update
@@ -51,18 +51,31 @@ source ~/.bashrc
 ### 4. Build Workspace
 
 ```bash
-cd ~/unicorn_beginner_ws
+cd ~/creating_autonmous_car_ws
 cb  # or: colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
 
 ### 5. Source Workspace
 
 ```bash
-source ~/unicorn_beginner_ws/install/setup.bash
+source ~/creating_autonmous_car_ws/install/setup.bash
 
 # Add to .bashrc for automatic sourcing
-echo "source ~/unicorn_beginner_ws/install/setup.bash" >> ~/.bashrc
+echo "source ~/creating_autonmous_car_ws/install/setup.bash" >> ~/.bashrc
 ```
+
+### 5-1. Install Rangelibc for particle filter
+
+```bash
+cd ~/creating_autonmous_car_ws/src/creating_autonomous_car/slam/range_libc/pywrapper
+
+sudo apt install cython3
+pip3 install . --user --break-system-packages
+
+python3 -c "import range_libc; print('range_libc import OK')"
+
+```
+
 
 ## Usage
 
@@ -151,7 +164,7 @@ src/
 ### Build fails
 ```bash
 # Clean build
-cd ~/unicorn_beginner_ws
+cd ~/creating_autonmous_car_ws
 rm -rf build install log
 cb
 ```
@@ -173,7 +186,7 @@ sudo usermod -a -G dialout $USER
 
 ## License
 
-Copyright 2024 HMCL-UNIST
+Copyright 2026 HMCL-UNIST
 
 Licensed under the Apache License, Version 2.0
 
