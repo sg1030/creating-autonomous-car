@@ -21,7 +21,7 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 ```bash
 mkdir -p ~/unicorn_beginner_ws/src
 cd ~/unicorn_beginner_ws/src
-git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git .
+git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git
 ```
 
 ### 2. Install Dependencies
@@ -31,7 +31,7 @@ cd ~/unicorn_beginner_ws
 
 # Initialize rosdep (first time only)
 sudo apt update
-sudo apt install python3-rosdep
+sudo apt install python3-rosdep python3-pip
 sudo rosdep init
 rosdep update
 
