@@ -4,10 +4,10 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 
 ## Features
 
+- **VESC**: VESC-based Ackermann steering control
+- **2D LiDAR**: Hokuyo LiDAR and pre-built IMU sensor
 - **SLAM**: Cartographer-based 2D SLAM mapping and localization
-- **Motor Control**: VESC-based Ackermann steering control
-- **Sensors**: URG LiDAR and IMU sensor integration
-- **Map Management**: Map saving and initial pose setting via RViz interface
+- **Particle filter**: Alternative 2d LiDAR based Localization
 
 ## Prerequisites
 
@@ -39,32 +39,22 @@ rosdep update
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
-### 3. Setup Build Alias (Optional)
+### 3. Build Workspace
 
 Add this alias to your `~/.bashrc`:
 
 ```bash
+cd ~/creating_autonmous_car_ws
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+
+# (optional)
 echo "alias cb='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 4. Build Workspace
 
-```bash
-cd ~/creating_autonmous_car_ws
-cb  # or: colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
-```
-
-### 5. Source Workspace
-
-```bash
-source ~/creating_autonmous_car_ws/install/setup.bash
-
-# Add to .bashrc for automatic sourcing
-echo "source ~/creating_autonmous_car_ws/install/setup.bash" >> ~/.bashrc
-```
-
-### 5-1. Install Rangelibc for particle filter
+### 4. Install Rangelibc for particle filter
 
 ```bash
 cd ~/creating_autonmous_car_ws/src/creating_autonomous_car/slam/range_libc/pywrapper
@@ -75,6 +65,16 @@ pip3 install . --user --break-system-packages
 python3 -c "import range_libc; print('range_libc import OK')"
 
 ```
+
+### 5. Source Workspace
+
+```bash
+source ~/creating_autonmous_car_ws/install/setup.bash
+
+# (optional) Add to .bashrc for automatic sourcing
+echo "source ~/creating_autonmous_car_ws/install/setup.bash" >> ~/.bashrc
+```
+
 
 
 ## Usage
@@ -93,7 +93,14 @@ This launches:
 - VESC to odometry converter
 - Simple command multiplexer
 
-### Mapping Mode
+### Run joy node
+Run the joy node at the appropriate location (e.g., onboard, remote laptop).
+Depending on the connection method(bluetooth, wired connection to laptop, wireless connection with receiver), the joystick key mapping may vary.
+```bash
+ros2 run joy joy_node
+```
+
+### cartographer Mapping
 
 Start mapping to create a new map:
 
@@ -112,7 +119,7 @@ Files saved:
 - `<map_name>.png` - Occupancy grid image
 - `<map_name>.yaml` - Map metadata
 
-### Localization Mode
+### cartographer Localization
 
 Use an existing map for localization:
 
@@ -127,62 +134,8 @@ ros2 launch stack_master cartographer_localization.launch.xml map:=<map_name>
 4. Drag to set orientation
 5. Cartographer will reinitialize localization at the specified pose
 
-## Package Structure
-
-```
-src/
-├── stack_master/           # Main integration package
-│   ├── launch/            # Launch files
-│   ├── config/            # Cartographer configurations
-│   ├── scripts/           # Python nodes
-│   └── maps/              # Saved maps
-├── sensor/
-│   ├── vesc/              # VESC motor driver
-│   └── urg_node/          # Hokuyo URG LiDAR driver
-└── slam/
-    ├── cartographer/      # Cartographer SLAM core
-    ├── cartographer_ros/  # Cartographer ROS2 wrapper
-    ├── particle_filter/   # Particle filter implementation
-    └── range_libc/        # Fast ray-casting library
-```
-
-## Configuration Files
-
-### Mapping Configuration
-- `config/mapping_2d.lua` - Cartographer mapping parameters
-- Lower `min_score` for easier loop closure detection
-- Higher `optimize_every_n_nodes` for better map quality
-
-### Localization Configuration
-- `config/localization_2d.lua` - Cartographer localization parameters
-- Higher `min_score` for robust localization
-- Lower `optimize_every_n_nodes` for faster updates
-- `pure_localization_trimmer` enabled to prevent map updates
-
-## Troubleshooting
-
-### Build fails
-```bash
-# Clean build
-cd ~/creating_autonmous_car_ws
-rm -rf build install log
-cb
-```
-
-### Sensor not detected
-```bash
-# Check USB permissions
-ls -l /dev/ttyACM* /dev/ttyUSB*
-
-# Add user to dialout group
-sudo usermod -a -G dialout $USER
-# Logout and login again
-```
-
-### Map not loading
-- Verify map files exist in `src/stack_master/maps/<map_name>/`
-- Check file permissions
-- Ensure map name matches in launch command
+### particle-filter Localization
+TODO
 
 ## License
 
@@ -192,5 +145,4 @@ Licensed under the Apache License, Version 2.0
 
 ## Contributors
 
-- Jeongsang Ryu (jeongsangryu@gmail.com)
-- HMCL-UNIST Team
+- Jeongsang Ryu (ryujs@unist.ac.kr)
