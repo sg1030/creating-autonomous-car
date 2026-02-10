@@ -2,7 +2,7 @@ paper/
 build/
 tmp/
 dist/
-*egg-info/
+
 pywrapper/*.so
 pywrapper/*.cpp
 pywrapper/test.png
@@ -12,3 +12,5 @@ paper/data/synthetic
 ._.*
 paper/bak
 pywrapper/watch.sh
+pywrapper/dist/
+pywrapper/*egg-info/
