@@ -27,8 +27,8 @@ class SimpleMuxNode(Node):
         self.declare_parameter('joy_max_speed', 4.0)
         self.declare_parameter('joy_max_steer', 0.4)
         self.declare_parameter('joy_freshness_threshold', 1.0)
-        self.declare_parameter('vesc_servo_min', 0.15)
-        self.declare_parameter('vesc_servo_max', 0.85)
+        self.declare_parameter('servo_min', 0.15)
+        self.declare_parameter('servo_max', 0.85)
         self.declare_parameter('steering_angle_to_servo_offset', 0.5)
         self.declare_parameter('steering_angle_to_servo_gain', -1.2135)
 
@@ -41,13 +41,13 @@ class SimpleMuxNode(Node):
         self.max_steer = self.get_parameter('joy_max_steer').value
         self.joy_freshness_threshold = self.get_parameter('joy_freshness_threshold').value
 
-        vesc_servo_min = self.get_parameter('vesc_servo_min').value
-        vesc_servo_max = self.get_parameter('vesc_servo_max').value
+        servo_min = self.get_parameter('servo_min').value
+        servo_max = self.get_parameter('servo_max').value
         steering_angle_to_servo_offset = self.get_parameter('steering_angle_to_servo_offset').value
         steering_angle_to_servo_gain = self.get_parameter('steering_angle_to_servo_gain').value
 
-        servo_max_rad = (vesc_servo_max - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
-        servo_min_rad = (vesc_servo_min - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
+        servo_max_rad = (servo_max - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
+        servo_min_rad = (servo_min - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
 
         self.servo_max_abs = min(abs(servo_max_rad), abs(servo_min_rad))
 
