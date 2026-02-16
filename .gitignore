@@ -18,3 +18,4 @@ slam/range_libc/pywrapper/*.egg
 # IDE
 .vscode/
 .idea/
+.claude/

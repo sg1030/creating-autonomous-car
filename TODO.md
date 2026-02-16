@@ -1,61 +1,171 @@
 # TODO
 
-## 1. VESC 변환 파라미터 중앙 관리 구조로 변경
+## 1. 제어 명령 인터페이스 통일 (Sim/Real)
 
-### 현재 문제점
+### 목적
 
-VESC Ackermann 변환 파라미터(`speed_to_erpm_gain`, `steering_angle_to_servo_gain` 등)가 각 launch 파일에 하드코딩되어 있어 관리가 어렵고, 실제로 값이 불일치하는 버그가 존재한다.
+센서 런치를 통해 구동되는 제어 패키지들 (simple_mux, joystick 등)이 시뮬레이터에서도 실제 차량과 동일하게 작동하도록 통일한다.
 
-| 파라미터 | ackermann_to_vesc (명령 변환) | vesc_to_odom (오돔 변환) |
-|---------|------|------|
-| `speed_to_erpm_gain` | 4614.0 | **1.0 (잘못됨)** |
-| `speed_to_erpm_offset` | 0.0 | 0.0 |
-| `steering_angle_to_servo_gain` | -1.2135 | **1.0 (잘못됨)** |
-| `steering_angle_to_servo_offset` | 0.5304 | **0.0 (잘못됨)** |
-| `wheelbase` | - | 0.2 (확인 필요) |
+### 현재 상황
 
-이로 인해 `/odom` 토픽의 속도와 위치가 **완전히 틀린 값**으로 발행되고 있다.
+**실제 차량:**
+- Joystick → `/joy` topic
+- simple_mux → `/ackermann_cmd` 출력
+  - Joy 명령, High-level planner 명령 등을 mux
+- `/ackermann_cmd` → VESC driver → 모터 제어
 
-### 관련 파일
+**시뮬레이터:**
+- Keyboard teleop → `/cmd_vel` (Twist)
+- gym_bridge가 직접 구독 → 시뮬레이터 제어
+- simple_mux 없음
 
-- `sensor/vesc/vesc_ackermann/launch/ackermann_to_vesc_node.launch.xml` - 명령 변환 launch
-- `sensor/vesc/vesc_ackermann/launch/vesc_to_odom_node.launch.xml` - 오돔 변환 launch
-- `sensor/vesc/vesc_driver/params/vesc_config.yaml` - VESC 하드웨어 설정 (현재 게인 미포함)
-- `stack_master/launch/sensors.launch.xml` - 상위 launch (파라미터 오버라이드 없이 include만 함)
-- `stack_master/scripts/simple_mux_node.py` - 서보 게인 기본값 별도 하드코딩
+### 문제점
 
-### 작업 내용
+1. 시뮬레이터에서 simple_mux가 작동하지 않음
+2. High-level planner 명령이 시뮬레이터에 전달되지 않음
+3. 제어 인터페이스가 sim/real에서 다름 (`/cmd_vel` vs `/ackermann_cmd`)
 
-#### 1-1. `vesc_config.yaml`에 변환 파라미터 추가
+### 해결 방안
 
-```yaml
-# 기존 하드웨어 설정 아래에 추가
-speed_to_erpm_gain: 4614.0
-speed_to_erpm_offset: 0.0
-steering_angle_to_servo_gain: -1.2135
-steering_angle_to_servo_offset: 0.5304
-wheelbase: 0.33
+**시뮬레이터도 동일한 제어 파이프라인 사용:**
+
+```
+Joystick/Planner → simple_mux → /ackermann_cmd → gym_bridge → Simulator
 ```
 
-- `wheelbase` 값은 실차 측정 후 정확한 값으로 입력 (현재 launch에는 0.2로 되어 있으나 확인 필요)
-- `speed_to_erpm_gain`은 실차 캘리브레이션 후 정확한 값으로 조정
+#### 수정 사항:
 
-#### 1-2. 각 launch 파일에서 yaml 파라미터를 읽도록 수정
+1. **gym_bridge 수정:**
+   - `/cmd_vel` 구독 제거
+   - `/ackermann_cmd` (AckermannDriveStamped) 구독 추가
 
-**방법 A: `sensors.launch.xml`에서 arg로 전달**
+2. **simple_mux를 시뮬레이터에서도 실행:**
+   - `base_system.launch.xml`의 COMMON COMPONENTS에 simple_mux 추가
+   - sim/real 모두 동일한 mux 로직 사용
 
-`sensors.launch.xml`에서 yaml을 읽고, 각 하위 launch에 arg로 넘기는 방식.
-
-**방법 B: 각 노드에서 직접 yaml을 로드**
-
-각 launch 파일에서 `<param from="..."/>` 으로 yaml을 직접 로드. 단, 네임스페이스 충돌에 주의.
-
-#### 1-3. `simple_mux_node.py`의 하드코딩 기본값도 통일
-
-현재 `simple_mux_node.py`에 `steering_angle_to_servo_gain = -1.2135`, `steering_angle_to_servo_offset = 0.5` 로 별도 하드코딩되어 있음. yaml에서 읽거나 launch에서 전달하도록 변경.
+3. **Joystick/Keyboard 통일:**
+   - Keyboard → Joy message 변환 노드 추가
+   - 또는 joy_node를 키보드 입력으로 사용
 
 ### 기대 효과
 
-- 파라미터를 `vesc_config.yaml` 한 곳에서 관리하여 불일치 방지
-- 차량 튜닝 시 yaml 파일 하나만 수정하면 모든 노드에 반영
-- `/odom` 토픽의 속도/위치가 정확한 값으로 발행됨
+- High-level planner를 시뮬레이터에서 테스트 가능
+- 제어 인터페이스 통일로 코드 재사용성 증가
+- 시뮬레이터와 실차 간 전환 간편화
+
+---
+
+## 2. 동적 Occupancy Grid 추가
+
+### 목적
+
+움직이는 장애물을 감지하고 표현할 수 있는 dynamic occupancy grid를 추가한다.
+
+### 작업 내용
+
+1. LiDAR scan을 사용한 local occupancy grid 생성
+2. 시간에 따른 grid 업데이트 (moving objects 추적)
+3. Costmap integration (planner에서 사용)
+
+### 구현 방안
+
+- `costmap_2d` 사용 또는
+- 자체 dynamic grid 노드 작성
+
+---
+
+## 3. Localization 출력을 시뮬레이터 Topic 형식에 맞추기
+
+### 목적
+
+실제 차량의 Localization 출력(Cartographer/Particle Filter)을 시뮬레이터의 `/car_state/odom` topic 형식으로 통일하여, 동일한 플래너/컨트롤러 코드를 sim/real에서 사용 가능하게 한다.
+
+### 현재 상황
+
+**시뮬레이터 모드:**
+- `/car_state/odom` (Odometry) - ground truth pose
+- `/car_state/pose` (PoseStamped) - ground truth pose
+- Frame: `car_state/base_link`
+
+**실제 차량 모드:**
+- `/odom` (Odometry) - wheel encoder 기반 odometry (drift 발생, **유지 필요**)
+- Cartographer/PF - `map` frame에서의 추정 위치
+  - 현재 TF만 제공: `map` → `base_link`
+  - Odometry topic 없음
+
+### 해결 방안
+
+**실차 Localization이 시뮬과 동일한 형식으로 publish:**
+
+1. Cartographer/PF가 추정 pose를 `/car_state/odom` (Odometry)로 publish
+2. `/car_state/pose` (PoseStamped)도 함께 publish
+3. Frame: `map` → `base_link` TF는 기존대로 유지
+4. Wheel odometry (`/odom`)는 그대로 유지 (다른 용도로 사용 가능)
+
+### 작업 내용
+
+#### Localization Wrapper Node 작성
+
+Cartographer/PF의 TF를 읽어서 Odometry message로 변환:
+
+```python
+# localization_odom_publisher.py
+- Input: TF lookup (map → base_link)
+- Output: /car_state/odom (Odometry), /car_state/pose (PoseStamped)
+```
+
+### 기대 효과
+
+- **코드 재사용**: 플래너/컨트롤러가 시뮬/실차 구분 없이 `/car_state/odom` 사용
+- **Wheel odometry 보존**: `/odom`은 그대로 유지 (디버깅, 슬립 검출 등에 활용)
+- **인터페이스 통일**: 시뮬레이터 개발 후 실차 적용 간편화
+
+---
+
+## 4. Centerline 추출 (Skeletonization)
+
+### 목적
+
+맵 PNG 이미지를 읽고 skeletonization을 통해 트랙의 centerline을 추출하여 global path planning에 활용한다.
+
+### 디렉토리 구조
+
+```
+creating_autonomous_car/
+├── planner/                          # 새로 생성
+│   └── extract_centerline/           # 새 패키지
+│       ├── CMakeLists.txt
+│       ├── package.xml
+│       ├── scripts/
+│       │   └── extract_centerline.py  # Skeletonization 코드
+│       └── launch/
+│           └── extract_centerline.launch.xml
+```
+
+### 작업 내용
+
+1. **planner 폴더 생성**
+2. **extract_centerline 패키지 생성**
+3. **Skeletonization 코드 작성/가져오기:**
+   - PNG 맵 이미지 읽기
+   - Binary image 변환 (free space vs obstacles)
+   - Skeletonization 알고리즘 적용 (scipy, scikit-image 등)
+   - Centerline waypoints 추출
+   - CSV 또는 topic으로 출력
+
+### 참고 라이브러리
+
+- `scikit-image`: `skimage.morphology.skeletonize`
+- `scipy.ndimage`: morphological operations
+- `opencv-python`: 이미지 처리
+
+### 출력 형식
+
+- Waypoints (x, y) 리스트
+- 또는 Path message (`nav_msgs/Path`)
+
+### 기대 효과
+
+- Global path planning의 reference line으로 활용
+- 최적 주행 라인 생성
+- Pure pursuit, MPC 등 path tracking에 사용
