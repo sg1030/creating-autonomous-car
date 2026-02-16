@@ -19,3 +19,7 @@ slam/range_libc/pywrapper/*.egg
 .vscode/
 .idea/
 .claude/
+
+# Documentation (auto-generated)
+**/docs/html/
+**/docs/xml/
