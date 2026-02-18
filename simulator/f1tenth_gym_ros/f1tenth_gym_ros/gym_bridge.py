@@ -30,17 +30,20 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
 from ackermann_msgs.msg import AckermannDriveStamped
+from visualization_msgs.msg import Marker, MarkerArray
 from tf2_ros import TransformBroadcaster
 
 import gymnasium as gym
 import numpy as np
+import cv2
+import threading
 from transforms3d import euler
 import os.path
 
@@ -251,6 +254,39 @@ class GymBridge(Node):
                 self.teleop_callback,
                 10)
 
+        # ===== Obstacle system =====
+        self._obstacle_lock = threading.Lock()
+        self.static_obstacles = []
+        self.dynamic_obstacle = None
+        self.map_needs_update = False
+
+        # Load base map for obstacle rendering
+        self.base_map_img = None
+        self.current_map_img = None
+        self.map_resolution = None
+        self.map_origin_x = None
+        self.map_origin_y = None
+        self.map_height = None
+        self.map_width = None
+        self._load_base_map(map_yaml_path)
+
+        # /map publisher (TRANSIENT_LOCAL for RViz latched behavior)
+        map_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.map_pub = self.create_publisher(OccupancyGrid, '/map', map_qos)
+
+        # Obstacle subscribers
+        self.static_obs_sub = self.create_subscription(
+            MarkerArray, '/static_obstacles', self._static_obstacles_cb, 10)
+        self.dynamic_obs_sub = self.create_subscription(
+            Marker, '/dynamic_obstacle_state', self._dynamic_obstacle_cb, 10)
+
+        # Publish initial map (no obstacles)
+        if self.base_map_img is not None:
+            self._publish_occupancy_grid()
+            self.get_logger().info('[GymBridge] Initial /map published')
+
     def drive_callback(self, drive_msg):
         self.ego_requested_speed = drive_msg.drive.speed
         self.ego_steer = drive_msg.drive.steering_angle
@@ -303,7 +339,160 @@ class GymBridge(Node):
         else:
             self.ego_steer = 0.0
 
+    # ===== Obstacle system methods =====
+
+    def _load_base_map(self, map_yaml_path):
+        """Load base map image and metadata from YAML + image file."""
+        try:
+            with open(map_yaml_path, 'r') as f:
+                map_data = yaml.safe_load(f)
+
+            map_dir = os.path.dirname(map_yaml_path)
+            img_filename = map_data['image']
+            img_path = os.path.join(map_dir, img_filename)
+
+            self.base_map_img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            if self.base_map_img is None:
+                self.get_logger().error(f'[GymBridge] Failed to load map image: {img_path}')
+                return
+
+            self.map_resolution = map_data['resolution']
+            self.map_origin_x = map_data['origin'][0]
+            self.map_origin_y = map_data['origin'][1]
+            self.map_height = self.base_map_img.shape[0]
+            self.map_width = self.base_map_img.shape[1]
+            self.current_map_img = self.base_map_img.copy()
+
+            self.get_logger().info(f'[GymBridge] Base map loaded: {self.base_map_img.shape}, '
+                                   f'res={self.map_resolution}')
+        except Exception as e:
+            self.get_logger().error(f'[GymBridge] Failed to load base map: {e}')
+
+    def _static_obstacles_cb(self, msg: MarkerArray):
+        """Callback for static obstacle positions."""
+        with self._obstacle_lock:
+            new_obstacles = []
+            for marker in msg.markers:
+                if marker.action == Marker.DELETEALL:
+                    new_obstacles = []
+                    break
+                if marker.action == Marker.ADD:
+                    radius_m = marker.scale.x / 2.0 if marker.scale.x > 0 else 0.25
+                    new_obstacles.append({
+                        'x': marker.pose.position.x,
+                        'y': marker.pose.position.y,
+                        'radius': radius_m
+                    })
+            self.static_obstacles = new_obstacles
+            self.map_needs_update = True
+
+    def _dynamic_obstacle_cb(self, msg: Marker):
+        """Callback for dynamic obstacle state."""
+        with self._obstacle_lock:
+            if msg.action == Marker.DELETE or msg.action == Marker.DELETEALL:
+                self.dynamic_obstacle = None
+            else:
+                self.dynamic_obstacle = msg
+            self.map_needs_update = True
+
+    def _meters_to_pixels(self, x_m, y_m):
+        """Convert world meters to pixel coordinates (origin top-left)."""
+        x_px = int((x_m - self.map_origin_x) / self.map_resolution)
+        y_px = int((y_m - self.map_origin_y) / self.map_resolution)
+        y_px = self.map_height - y_px  # flip Y (image origin is top-left)
+        return x_px, y_px
+
+    def _render_obstacles_on_map(self):
+        """Draw all obstacles on a fresh copy of the base map."""
+        self.current_map_img = self.base_map_img.copy()
+
+        # Static obstacles (circles)
+        for obs in self.static_obstacles:
+            center_px = self._meters_to_pixels(obs['x'], obs['y'])
+            radius_px = max(1, int(obs['radius'] / self.map_resolution))
+            cv2.circle(self.current_map_img, center_px, radius_px, 0, -1)
+
+        # Dynamic obstacle (rotated rectangle)
+        if self.dynamic_obstacle is not None:
+            dyn = self.dynamic_obstacle
+            x_m = dyn.pose.position.x
+            y_m = dyn.pose.position.y
+            qz = dyn.pose.orientation.z
+            qw = dyn.pose.orientation.w
+            heading = 2.0 * np.arctan2(qz, qw)
+
+            length_m = dyn.scale.x
+            width_m = dyn.scale.y
+            center_px = self._meters_to_pixels(x_m, y_m)
+            length_px = int(length_m / self.map_resolution)
+            width_px = int(width_m / self.map_resolution)
+
+            half_l = length_px / 2.0
+            half_w = width_px / 2.0
+            corners_local = np.array([
+                [-half_w, -half_l],
+                [-half_w, half_l],
+                [half_w, half_l],
+                [half_w, -half_l]
+            ])
+            # Rotation for image coordinates (Y flipped)
+            h_adj = heading - np.pi / 2.0
+            cos_h = np.cos(h_adj)
+            sin_h = np.sin(h_adj)
+            rot = np.array([[cos_h, sin_h], [-sin_h, cos_h]])
+            corners_px = (rot @ corners_local.T).T + np.array(center_px)
+            corners_px = corners_px.astype(np.int32)
+            cv2.fillPoly(self.current_map_img, [corners_px], 0)
+
+    def _update_gym_map(self):
+        """Render obstacles, update gym DT, and publish /map."""
+        if self.base_map_img is None:
+            return
+
+        with self._obstacle_lock:
+            self._render_obstacles_on_map()
+            self.map_needs_update = False
+
+        # Update gym environment's distance transform
+        # The gym expects the image with origin at bottom-left (flipped)
+        flipped = np.flipud(self.current_map_img)
+        self.env.unwrapped.update_map_from_array(
+            flipped, self.map_resolution,
+            self.map_origin_x, self.map_origin_y)
+
+        # Publish updated /map
+        self._publish_occupancy_grid()
+
+    def _publish_occupancy_grid(self):
+        """Convert current map image to OccupancyGrid and publish."""
+        if self.current_map_img is None:
+            return
+
+        grid_msg = OccupancyGrid()
+        grid_msg.header.stamp = self.get_clock().now().to_msg()
+        grid_msg.header.frame_id = 'map'
+        grid_msg.info.resolution = self.map_resolution
+        grid_msg.info.width = self.map_width
+        grid_msg.info.height = self.map_height
+        grid_msg.info.origin.position.x = self.map_origin_x
+        grid_msg.info.origin.position.y = self.map_origin_y
+        grid_msg.info.origin.position.z = 0.0
+        grid_msg.info.origin.orientation.w = 1.0
+
+        # OccupancyGrid origin is bottom-left, image origin is top-left
+        flipped_img = np.flipud(self.current_map_img)
+        occupancy = np.zeros(flipped_img.shape, dtype=np.int8)
+        occupancy[flipped_img < 128] = 100   # occupied
+        occupancy[flipped_img >= 128] = 0     # free
+        grid_msg.data = occupancy.flatten().tolist()
+
+        self.map_pub.publish(grid_msg)
+
     def drive_timer_callback(self):
+        # Update map if obstacles changed (DT recalculation)
+        if self.map_needs_update:
+            self._update_gym_map()
+
         # Always step the simulation to generate new scan noise
         if not self.has_opp:
             self.obs, _, self.done, _ = self.env.step(

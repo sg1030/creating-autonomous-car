@@ -426,6 +426,42 @@ class ScanSimulator2D(object):
 
         return True
 
+    def set_map_from_array(self, map_img, map_resolution, origin_x, origin_y, origin_theta=0.0):
+        """
+        Set the bitmap of the scan simulator directly from a numpy array.
+        Avoids file I/O, used for dynamic map updates with obstacles.
+
+            Args:
+                map_img (numpy.ndarray, (n, m)): bitmap where 0=obstacle, 255=free.
+                    Must be in bottom-left origin format (same as FLIP_TOP_BOTTOM applied).
+                map_resolution (float): resolution of the map in m/cell
+                origin_x (float): x coordinate of map origin in meters
+                origin_y (float): y coordinate of map origin in meters
+                origin_theta (float): rotation of map origin in radians (default 0.0)
+
+            Returns:
+                flag (bool): if loading is successful
+        """
+        self.map_img = map_img.astype(np.float64)
+
+        # grayscale -> binary (same thresholding as set_map)
+        self.map_img[self.map_img <= 128.] = 0.
+        self.map_img[self.map_img > 128.] = 255.
+
+        self.map_height = self.map_img.shape[0]
+        self.map_width = self.map_img.shape[1]
+        self.map_resolution = map_resolution
+
+        self.orig_x = origin_x
+        self.orig_y = origin_y
+        self.orig_s = np.sin(origin_theta)
+        self.orig_c = np.cos(origin_theta)
+
+        # recompute distance transform
+        self.dt = get_dt(self.map_img, self.map_resolution)
+
+        return True
+
     def scan(self, pose, rng, std_dev=0.01):
         """
         Perform simulated 2D scan by pose on the given map

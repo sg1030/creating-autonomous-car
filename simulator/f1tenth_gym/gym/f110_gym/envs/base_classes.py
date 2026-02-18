@@ -178,6 +178,12 @@ class RaceCar(object):
         """
         RaceCar.scan_simulator.set_map(map_path, map_ext)
 
+    def set_map_from_array(self, map_img, map_resolution, origin_x, origin_y, origin_theta=0.0):
+        """
+        Sets the map for scan simulator from a numpy array.
+        """
+        RaceCar.scan_simulator.set_map_from_array(map_img, map_resolution, origin_x, origin_y, origin_theta)
+
     def reset(self, pose):
         """
         Resets the vehicle to a pose
@@ -511,6 +517,11 @@ class Simulator(object):
         for agent in self.agents:
             agent.set_map(map_path, map_ext)
 
+    def set_map_from_array(self, map_img, map_resolution, origin_x, origin_y, origin_theta=0.0):
+        """
+        Sets the map from a numpy array. Only calls once since scan_simulator is class-level.
+        """
+        self.agents[0].set_map_from_array(map_img, map_resolution, origin_x, origin_y, origin_theta)
 
     def update_params(self, params, agent_idx=-1):
         """

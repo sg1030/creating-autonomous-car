@@ -21,6 +21,10 @@ class StaticObstacleManager(Node):
     def __init__(self):
         super().__init__('static_obstacle_manager')
 
+        # ===== Parameters =====
+        self.declare_parameter('obstacle_diameter_m', 0.5)
+        self.obstacle_diameter_m = self.get_parameter('obstacle_diameter_m').value
+
         # ===== Static obstacles list =====
         self.static_obstacles = []  # List of (x, y) tuples
 
@@ -143,9 +147,9 @@ class StaticObstacleManager(Node):
             marker.pose.position.z = 0.0
             marker.pose.orientation.w = 1.0
 
-            # Size: 50cm diameter (matching UNICORN code)
-            marker.scale.x = 0.5
-            marker.scale.y = 0.5
+            # Size from parameter
+            marker.scale.x = self.obstacle_diameter_m
+            marker.scale.y = self.obstacle_diameter_m
             marker.scale.z = 0.01  # Flat marker for position info
 
             # Invisible color (just position data)
@@ -183,9 +187,9 @@ class StaticObstacleManager(Node):
             marker.pose.position.z = 0.25
             marker.pose.orientation.w = 1.0
 
-            marker.scale.x = 0.5  # 50cm diameter
-            marker.scale.y = 0.5
-            marker.scale.z = 0.5
+            marker.scale.x = self.obstacle_diameter_m
+            marker.scale.y = self.obstacle_diameter_m
+            marker.scale.z = self.obstacle_diameter_m
 
             marker.color.r = 0.0
             marker.color.g = 0.0

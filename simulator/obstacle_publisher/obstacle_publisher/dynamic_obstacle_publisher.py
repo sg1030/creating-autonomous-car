@@ -8,10 +8,13 @@ The integrated_map_publisher in the simulator will handle map rendering.
 
 import rclpy
 from rclpy.node import Node
+from rcl_interfaces.msg import ParameterDescriptor
 import numpy as np
 import csv
 import os
 from visualization_msgs.msg import Marker, MarkerArray
+
+_DYNAMIC = ParameterDescriptor(dynamic_typing=True)
 
 
 class DynamicObstaclePublisher(Node):
@@ -20,29 +23,41 @@ class DynamicObstaclePublisher(Node):
     def __init__(self):
         super().__init__('dynamic_obstacle_publisher')
 
-        # ===== Parameters =====
+        # ===== Parameters (dynamic_typing for float params to accept int from CLI) =====
         self.declare_parameter('update_rate', 20)
-        self.declare_parameter('speed_scaler', 1.0)
+        self.declare_parameter('speed_scaler', 1.0, _DYNAMIC)
         self.declare_parameter('constant_speed', False)
-        self.declare_parameter('starting_s', 0.0)
-        self.declare_parameter('obstacle_length_m', 0.65)
-        self.declare_parameter('obstacle_width_m', 0.35)
+        self.declare_parameter('starting_s', 0.0, _DYNAMIC)
+        self.declare_parameter('obstacle_length_m', 0.65, _DYNAMIC)
+        self.declare_parameter('obstacle_width_m', 0.35, _DYNAMIC)
         self.declare_parameter('map_name', 'f')
+        self.declare_parameter('trajectory_csv', 'global_waypoints.csv')
+        self.declare_parameter('reactive', False)
+        self.declare_parameter('reactive_freq', 0.3, _DYNAMIC)
 
         self.update_rate = self.get_parameter('update_rate').value
-        self.speed_scaler = self.get_parameter('speed_scaler').value
+        self.speed_scaler = float(self.get_parameter('speed_scaler').value)
         self.constant_speed = self.get_parameter('constant_speed').value
-        self.starting_s = self.get_parameter('starting_s').value
-        self.obstacle_length_m = self.get_parameter('obstacle_length_m').value
-        self.obstacle_width_m = self.get_parameter('obstacle_width_m').value
+        self.starting_s = float(self.get_parameter('starting_s').value)
+        self.obstacle_length_m = float(self.get_parameter('obstacle_length_m').value)
+        self.obstacle_width_m = float(self.get_parameter('obstacle_width_m').value)
         self.map_name = self.get_parameter('map_name').value
+        self.trajectory_csv = self.get_parameter('trajectory_csv').value
+        self.reactive = self.get_parameter('reactive').value
+        self.reactive_frequency = float(self.get_parameter('reactive_freq').value)
 
         self.looptime = 1.0 / self.update_rate
 
-        # ===== Map directory =====
-        from ament_index_python.packages import get_package_share_directory
-        stack_master_dir = get_package_share_directory('stack_master')
-        self.map_dir = os.path.join(stack_master_dir, 'maps', self.map_name)
+        # ===== Reactive mode state (sine-wave lateral oscillation) =====
+        self.reactive_phase = 0.0
+        self.reactive_amplitude = 0.0
+        self.max_amplitude_limit = 0.5  # Max lateral offset in meters
+        self.prev_d_perturbation = 0.0
+
+        # ===== Map directory (source path via realpath) =====
+        # __file__: .../creating_autonomous_car/simulator/obstacle_publisher/obstacle_publisher/dynamic_obstacle_publisher.py
+        pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+        self.map_dir = os.path.join(pkg_root, 'stack_master', 'maps', self.map_name)
 
         # ===== Obstacle state =====
         self.current_s = self.starting_s
@@ -69,11 +84,12 @@ class DynamicObstaclePublisher(Node):
         self.get_logger().info(f'  - Speed scaler: {self.speed_scaler}')
         self.get_logger().info(f'  - Obstacle size: {self.obstacle_length_m}m x {self.obstacle_width_m}m')
         self.get_logger().info(f'  - Update rate: {self.update_rate}Hz')
+        self.get_logger().info(f'  - Reactive mode: {self.reactive}')
         self.get_logger().info(f'  - Publishing state to /dynamic_obstacle_state')
 
     def load_trajectory_from_csv(self):
         """Load centerline from CSV"""
-        csv_path = os.path.join(self.map_dir, 'centerline.csv')
+        csv_path = os.path.join(self.map_dir, self.trajectory_csv)
 
         if not os.path.exists(csv_path):
             self.get_logger().warn(f'Centerline not found: {csv_path}')
@@ -116,6 +132,17 @@ class DynamicObstaclePublisher(Node):
             heading_array = np.arctan2(np.diff(y_array, append=y_array[0]),
                                        np.diff(x_array, append=x_array[0]))
 
+        # Track widths for reactive mode
+        if 'w_tr_right_m' in waypoints_data[0]:
+            w_right_array = np.array([float(row['w_tr_right_m']) for row in waypoints_data])
+        else:
+            w_right_array = np.ones(len(waypoints_data)) * 0.5
+
+        if 'w_tr_left_m' in waypoints_data[0]:
+            w_left_array = np.array([float(row['w_tr_left_m']) for row in waypoints_data])
+        else:
+            w_left_array = np.ones(len(waypoints_data)) * 0.5
+
         self.waypoints = []
         for i in range(len(x_array)):
             wpnt = {
@@ -123,7 +150,9 @@ class DynamicObstaclePublisher(Node):
                 'y_m': y_array[i],
                 's_m': s_array[i],
                 'vx_mps': speed_array[i],
-                'heading': heading_array[i]
+                'heading': heading_array[i],
+                'w_right': w_right_array[i],
+                'w_left': w_left_array[i]
             }
             self.waypoints.append(wpnt)
 
@@ -157,7 +186,9 @@ class DynamicObstaclePublisher(Node):
                 'y_m': y_array[i],
                 's_m': s_array[i],
                 'vx_mps': speed_array[i],
-                'heading': heading_array[i]
+                'heading': heading_array[i],
+                'w_right': 0.5,
+                'w_left': 0.5
             }
             self.waypoints.append(wpnt)
 
@@ -167,13 +198,49 @@ class DynamicObstaclePublisher(Node):
         self.get_logger().info(f'Dummy centerline: {len(self.waypoints)} waypoints')
 
     def get_obstacle_state(self):
-        """Get obstacle position, heading, speed"""
+        """Get obstacle position, heading, speed (with reactive perturbation if enabled)"""
         if len(self.waypoints) == 0:
             return None, None, None, None
 
         idx = np.abs(self.waypoints_s_array - self.current_s).argmin()
         wpnt = self.waypoints[idx]
-        return wpnt['x_m'], wpnt['y_m'], wpnt['heading'], wpnt['vx_mps']
+
+        x_m = wpnt['x_m']
+        y_m = wpnt['y_m']
+        heading = wpnt['heading']
+
+        if self.reactive:
+            w_left = wpnt['w_left']
+            w_right = wpnt['w_right']
+
+            # Update phase
+            phase_increment = 2.0 * np.pi * self.reactive_frequency * self.looptime
+            new_phase = self.reactive_phase + phase_increment
+
+            # New cycle → random amplitude
+            if new_phase >= 2.0 * np.pi:
+                max_amp = min(w_left, w_right, self.max_amplitude_limit)
+                self.reactive_amplitude = np.random.uniform(0.3 * max_amp, max_amp)
+                new_phase = new_phase % (2.0 * np.pi)
+
+            self.reactive_phase = new_phase
+
+            # Lateral perturbation (sine wave)
+            d_perturbation = self.reactive_amplitude * np.sin(self.reactive_phase)
+
+            # Apply in normal direction (perpendicular to heading)
+            normal_x = -np.sin(heading)
+            normal_y = np.cos(heading)
+            x_m += d_perturbation * normal_x
+            y_m += d_perturbation * normal_y
+
+            # Heading adjustment from lateral velocity
+            d_dot = (d_perturbation - self.prev_d_perturbation) / self.looptime
+            self.prev_d_perturbation = d_perturbation
+            if wpnt['vx_mps'] > 0.1:
+                heading += np.arctan2(d_dot, wpnt['vx_mps'])
+
+        return x_m, y_m, heading, wpnt['vx_mps']
 
     def publish_state(self, x_m, y_m, heading):
         """Publish obstacle state as Marker"""
@@ -253,6 +320,18 @@ class DynamicObstaclePublisher(Node):
 
         # Update position
         self.current_s = (self.current_s + speed_mps * self.looptime) % self.max_s
+
+
+    def destroy_node(self):
+        """Publish DELETE marker before shutdown so gym_bridge clears dynamic obstacle."""
+        delete_marker = Marker()
+        delete_marker.header.frame_id = "map"
+        delete_marker.header.stamp = self.get_clock().now().to_msg()
+        delete_marker.id = 0
+        delete_marker.action = Marker.DELETE
+        self.state_pub.publish(delete_marker)
+        self.get_logger().info('[DynamicObstaclePublisher] Sent DELETE marker on shutdown')
+        super().destroy_node()
 
 
 def main(args=None):

@@ -25,6 +25,11 @@
     <include file="$(find-pkg-share f1tenth_gym_ros)/launch/gym_bridge_launch.py">
       <arg name="map_yaml_path" value="$(var map_path).yaml"/>
     </include>
+
+    <!-- Launch Obstacle Publisher (static + optional dynamic) -->
+    <include file="$(find-pkg-share obstacle_publisher)/launch/obstacle_publisher.launch.xml">
+      <arg name="map_name" value="$(var map)"/>
+    </include>
   </group>
 
   <!-- ========== LOCALIZATION (Real Hardware Only) ========== -->
@@ -48,5 +53,10 @@
   <!-- ========== COMMON COMPONENTS ========== -->
   <!-- TF tree: localization provides map->base_link, odometry provides odom->base_link -->
   <!-- map->odom is automatically calculated by tf2 -->
+
+  <!-- Waypoint Publisher: centerline, track bounds, global waypoints (markers + WpntArray) -->
+  <node pkg="planner" exec="waypoint_publisher" name="waypoint_publisher" output="screen">
+    <param name="map_name" value="$(var map)"/>
+  </node>
 
 </launch>

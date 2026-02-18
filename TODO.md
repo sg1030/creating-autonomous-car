@@ -55,26 +55,7 @@ Joystick/Planner → simple_mux → /ackermann_cmd → gym_bridge → Simulator
 
 ---
 
-## 2. 동적 Occupancy Grid 추가
-
-### 목적
-
-움직이는 장애물을 감지하고 표현할 수 있는 dynamic occupancy grid를 추가한다.
-
-### 작업 내용
-
-1. LiDAR scan을 사용한 local occupancy grid 생성
-2. 시간에 따른 grid 업데이트 (moving objects 추적)
-3. Costmap integration (planner에서 사용)
-
-### 구현 방안
-
-- `costmap_2d` 사용 또는
-- 자체 dynamic grid 노드 작성
-
----
-
-## 3. Localization 출력을 시뮬레이터 Topic 형식에 맞추기
+## 2. Localization 출력을 시뮬레이터 Topic 형식에 맞추기
 
 ### 목적
 
@@ -122,50 +103,20 @@ Cartographer/PF의 TF를 읽어서 Odometry message로 변환:
 
 ---
 
-## 4. Centerline 추출 (Skeletonization)
+## 3. Trajectory Optimization
 
 ### 목적
 
-맵 PNG 이미지를 읽고 skeletonization을 통해 트랙의 centerline을 추출하여 global path planning에 활용한다.
+센터라인(`centerline.csv`)을 기반으로 최적 주행 경로를 생성한다.
 
-### 디렉토리 구조
+### 현재 상황
 
-```
-creating_autonomous_car/
-├── planner/                          # 새로 생성
-│   └── extract_centerline/           # 새 패키지
-│       ├── CMakeLists.txt
-│       ├── package.xml
-│       ├── scripts/
-│       │   └── extract_centerline.py  # Skeletonization 코드
-│       └── launch/
-│           └── extract_centerline.launch.xml
-```
+- 센터라인 추출 완료 (`ros2 launch stack_master create_path.launch.xml map:=<map_name>`)
+- `planner/trajectory_optimizer` 노드 자리만 생성 (미구현)
+- `create_path.launch.xml`에서 `optimize:=true`로 실행 가능
 
 ### 작업 내용
 
-1. **planner 폴더 생성**
-2. **extract_centerline 패키지 생성**
-3. **Skeletonization 코드 작성/가져오기:**
-   - PNG 맵 이미지 읽기
-   - Binary image 변환 (free space vs obstacles)
-   - Skeletonization 알고리즘 적용 (scipy, scikit-image 등)
-   - Centerline waypoints 추출
-   - CSV 또는 topic으로 출력
-
-### 참고 라이브러리
-
-- `scikit-image`: `skimage.morphology.skeletonize`
-- `scipy.ndimage`: morphological operations
-- `opencv-python`: 이미지 처리
-
-### 출력 형식
-
-- Waypoints (x, y) 리스트
-- 또는 Path message (`nav_msgs/Path`)
-
-### 기대 효과
-
-- Global path planning의 reference line으로 활용
-- 최적 주행 라인 생성
-- Pure pursuit, MPC 등 path tracking에 사용
+1. `planner/planner/trajectory_optimizer.py` 구현
+2. 센터라인 + 트랙 폭(`w_tr_right_m`, `w_tr_left_m`) 활용
+3. 최적화된 경로를 `global_waypoints.csv`로 출력 (속도 프로파일 `vx_mps` 포함)

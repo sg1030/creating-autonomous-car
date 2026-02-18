@@ -1,18 +1,17 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>obstacle_publisher</name>
+  <name>planner</name>
   <version>0.0.0</version>
-  <description>Dynamic and static obstacle publisher for F1TENTH simulator</description>
+  <description>Global planner: centerline extraction and trajectory optimization for F1TENTH</description>
   <maintainer email="jeongsangryu@gmail.com">nuc5</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>
+  <depend>visualization_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <depend>interactive_markers</depend>
+  <depend>f110_msgs</depend>
   <depend>stack_master</depend>
 
   <test_depend>ament_copyright</test_depend>

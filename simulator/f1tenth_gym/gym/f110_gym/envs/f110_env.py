@@ -362,6 +362,12 @@ class F110Env(gym.Env):
         """
         self.sim.set_map(map_path, map_ext)
 
+    def update_map_from_array(self, map_img, map_resolution, origin_x, origin_y, origin_theta=0.0):
+        """
+        Updates the map used by simulation from a numpy array.
+        """
+        self.sim.set_map_from_array(map_img, map_resolution, origin_x, origin_y, origin_theta)
+
     def update_params(self, params, index=-1):
         """
         Updates the parameters used by simulation for vehicles
