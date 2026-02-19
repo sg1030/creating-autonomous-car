@@ -10,10 +10,14 @@
   </node>
 
   <!-- Ackermann to VESC Node -->
-  <include file="$(find-pkg-share vesc_ackermann)/launch/ackermann_to_vesc_node.launch.xml"/>
+  <include file="$(find-pkg-share vesc_ackermann)/launch/ackermann_to_vesc_node.launch.xml">
+    <arg name="vesc_config" value="$(var vesc_config)"/>
+  </include>
 
   <!-- VESC to Odom Node -->
-  <include file="$(find-pkg-share vesc_ackermann)/launch/vesc_to_odom_node.launch.xml"/>
+  <include file="$(find-pkg-share vesc_ackermann)/launch/vesc_to_odom_node.launch.xml">
+    <arg name="vesc_config" value="$(var vesc_config)"/>
+  </include>
 
   <!-- LiDAR Node (urg_node) -->
   <node pkg="urg_node" exec="urg_node_driver" name="urg_node" output="screen">
@@ -29,6 +33,7 @@
         args="0 0 0 0 0 0 base_link vesc_imu"/>
 
   <node pkg="stack_master" exec="simple_mux_node.py" name="simple_mux" output="screen">
+    <param from="$(var vesc_config)"/>
     <param name="out_topic" value="/ackermann_cmd"/>
     <param name="joy_max_speed" value="4.0"/>
   </node>
