@@ -4,7 +4,7 @@
   <arg name="map" description="Name of the map to save"/>
 
   <!-- Crawl backwards to find the maps in the src folder -->
-  <let name="maps_dir" value="$(find-pkg-prefix stack_master)/../../src/stack_master/maps/$(var map)"/>
+  <let name="maps_dir" value="$(find-pkg-prefix stack_master)/../../src/creating_autonomous_car/stack_master/maps/$(var map)"/>
 
   <!-- Cartographer configuration -->
   <let name="cartographer_config_dir" value="$(find-pkg-share stack_master)/config"/>
@@ -14,7 +14,7 @@
   <node pkg="cartographer_ros" exec="cartographer_node" name="cartographer_node" output="screen"
         args="-configuration_directory $(var cartographer_config_dir) -configuration_basename $(var lua_file) --ros-args --log-level warn">
     <param name="use_sim_time" value="false"/>
-    <remap from="/imu" to="/sensors/imu/raw"/>
+    <remap from="/imu" to="/vesc/sensors/imu/raw"/>
   </node>
 
   <!-- Occupancy Grid Node -->
@@ -24,6 +24,17 @@
     <param name="use_sim_time" value="false"/>
   </node>
 
+  <!-- Convert cartographer PoseStamped → Odometry for EKF -->
+  <node pkg="stack_master" exec="pose_to_odom_node.py" name="pose_to_odom_node" output="screen">
+    <remap from="pose_in"  to="/tracked_pose"/>
+    <remap from="odom_out" to="/tracked_pose/odom"/>
+  </node>
+
+  <node pkg="robot_localization" exec="ekf_node" name="ekf_localization" output="screen">
+    <param from="$(find-pkg-share stack_master)/config/ekf_cartographer.yaml"/>
+    <remap from="odometry/filtered" to="/car_state/odom"/>
+  </node>
+  
   <!-- Finish Map Node -->
   <node pkg="stack_master" exec="finish_map.py"
         name="finish_map_node" output="screen">

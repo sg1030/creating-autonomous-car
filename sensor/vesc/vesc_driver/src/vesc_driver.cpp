@@ -234,13 +234,14 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     imu_msg.imu.orientation.y = imuData->q_y();
     imu_msg.imu.orientation.z = imuData->q_z();
 
-    std_imu_msg.linear_acceleration.x = imuData->acc_x();
-    std_imu_msg.linear_acceleration.y = imuData->acc_y();
-    std_imu_msg.linear_acceleration.z = imuData->acc_z();
+    constexpr double G_TO_MS2 = 9.80665; // ;
+    std_imu_msg.linear_acceleration.x = imuData->acc_x() * G_TO_MS2;
+    std_imu_msg.linear_acceleration.y = imuData->acc_y() * G_TO_MS2;
+    std_imu_msg.linear_acceleration.z = imuData->acc_z() * G_TO_MS2;
 
-    std_imu_msg.angular_velocity.x = imuData->gyr_x();
-    std_imu_msg.angular_velocity.y = imuData->gyr_y();
-    std_imu_msg.angular_velocity.z = imuData->gyr_z();
+    std_imu_msg.angular_velocity.x = M_PI / 180 * imuData->gyr_x();
+    std_imu_msg.angular_velocity.y = M_PI / 180 * imuData->gyr_y();
+    std_imu_msg.angular_velocity.z = M_PI / 180 * imuData->gyr_z();
 
     std_imu_msg.orientation.w = imuData->q_w();
     std_imu_msg.orientation.x = imuData->q_x();

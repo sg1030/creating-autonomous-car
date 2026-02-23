@@ -4,7 +4,7 @@
   <arg name="map" description="Name of the map to load for localization"/>
 
   <!-- Crawl backwards to find the maps in the src folder -->
-  <let name="maps_dir" value="$(find-pkg-prefix stack_master)/../../src/stack_master/maps"/>
+  <let name="maps_dir" value="$(find-pkg-prefix stack_master)/../../src/creating_autonomous_car/stack_master/maps"/>
   <let name="pbstream_file" value="$(var maps_dir)/$(var map)/$(var map).pbstream"/>
 
   <!-- Cartographer configuration -->
@@ -17,7 +17,7 @@
         output="screen"
         args="-configuration_directory $(var cartographer_config_dir) -configuration_basename $(var lua_file) -load_state_filename $(var pbstream_file)">
     <param name="use_sim_time" value="false"/>
-    <remap from="/imu" to="/sensors/imu/raw"/>
+    <remap from="/imu" to="/vesc/sensors/imu/raw"/>
   </node>
 
   <!-- Occupancy Grid Node -->
@@ -26,6 +26,7 @@
         output="screen"
         args="-resolution 0.05 -publish_period_sec 1.0">
     <param name="use_sim_time" value="false"/>
+    <remap from="/map" to="/map_carto"/>
   </node>
   
   <!-- Set Initial Pose Node -->

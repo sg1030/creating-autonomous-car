@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Arguments -->
+  <arg name="sim"         default="false"      description="Use simulator (true) or real hardware (false)"/>
+  <arg name="vesc_config" default="$(find-pkg-share stack_master)/config/vesc_config.yaml"/>
+
+  <!-- ========== REAL HARDWARE SENSORS ========== -->
+  <group unless="$(var sim)">
+    <!-- VESC: motor driver + ackermann converter + wheel odometry (/vesc/odom) -->
+    <group>
+      <push_ros_namespace namespace="vesc"/>
+      <node pkg="vesc_driver" exec="vesc_driver_node" name="vesc_driver_node" output="screen">
+        <param from="$(var vesc_config)"/>
+      </node>
+      <include file="$(find-pkg-share vesc_ackermann)/launch/ackermann_to_vesc_node.launch.xml">
+        <arg name="vesc_config" value="$(var vesc_config)"/>
+      </include>
+      <include file="$(find-pkg-share vesc_ackermann)/launch/vesc_to_odom_node.launch.xml">
+        <arg name="vesc_config" value="$(var vesc_config)"/>
+      </include>
+    </group>
+
+    <!-- LiDAR: publishes /scan (frame_id: laser) -->
+    <node pkg="urg_node" exec="urg_node_driver" name="urg_node" output="screen">
+      <param from="$(var vesc_config)"/>
+    </node>
+  </group>
+
+  <!-- ========== ALWAYS ========== -->
+  <!-- Static TF: base_link → laser -->
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="base_to_laser_broadcaster"
+        args="--x 0.27 --y 0 --z 0.11 --qx 0 --qy 0 --qz 0 --qw 1 --frame-id base_link --child-frame-id laser"/>
+
+  <!-- Static TF: base_link → vesc_imu (yaw +90도, Z축은 base_link와 동일) -->
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="base_to_vesc_imu_broadcaster"
+        args="--x 0 --y 0 --z 0.0 --roll 0 --pitch 0 --yaw 1.5707963 --frame-id base_link --child-frame-id vesc_imu"/>
+
+  <!-- Static TF: vesc_imu → vesc_imu_rot (역회전 yaw=-90도: base_link와 동일한 orientation) -->
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="vesc_imu_to_rot_broadcaster"
+        args="--x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw -1.5707963 --frame-id vesc_imu --child-frame-id vesc_imu_rot"/>
+
+  <!-- Joystick / Command mux -->
+  <!-- sim=false → /vesc/ackermann_cmd (ackermann_to_vesc 가 구독) -->
+  <!-- sim=true  → /drive             (gym_bridge 가 구독)         -->
+  <let name="drive_topic" value="/vesc/ackermann_cmd" unless="$(var sim)"/>
+  <let name="drive_topic" value="/drive"              if="$(var sim)"/>
+  <node pkg="stack_master" exec="simple_mux_node.py" name="simple_mux" output="screen">
+    <param from="$(var vesc_config)"/>
+    <param name="out_topic"     value="$(var drive_topic)"/>
+    <param name="joy_max_speed" value="4.0"/>
+  </node>
+
+</launch>

@@ -1,36 +1,30 @@
 <?xml version="1.0"?>
 <launch>
   <!-- Main Arguments -->
-  <arg name="sim" default="false" description="Launch from F110 Simulator (true) or real hardware (false)"/>
-  <arg name="map" description="Map name to use for localization (will search stack_master/maps/)"/>
+  <arg name="sim"          default="false"        description="Launch from F110 Simulator (true) or real hardware (false)"/>
+  <arg name="map"                                 description="Map name to use for localization (will search stack_master/maps/)"/>
   <arg name="localization" default="cartographer" description="Localization algorithm: cartographer or pf (particle_filter)"/>
 
   <!-- Config paths -->
   <let name="vesc_config" value="$(find-pkg-share stack_master)/config/vesc_config.yaml"/>
-  <let name="sim_config" value="$(find-pkg-share stack_master)/config/SIM/sim.yaml"/>
-  <let name="maps_dir" value="$(find-pkg-share stack_master)/maps"/>
-  <let name="map_path" value="$(var maps_dir)/$(var map)/$(var map)"/>
+  <let name="sim_config"  value="$(find-pkg-share stack_master)/config/SIM/sim.yaml"/>
+  <let name="maps_dir"    value="$(find-pkg-share stack_master)/maps"/>
+  <let name="map_path"    value="$(var maps_dir)/$(var map)/$(var map)"/>
 
   <!-- ========== REAL HARDWARE MODE ========== -->
   <group unless="$(var sim)">
     <!-- Launch all sensors: VESC, LiDAR, IMU, etc. -->
-    <include file="$(find-pkg-share stack_master)/launch/sensors.launch.xml">
+    <include file="$(find-pkg-share stack_master)/launch/low_level.launch.xml">
       <arg name="vesc_config" value="$(var vesc_config)"/>
     </include>
   </group>
+    
+  <include file="$(find-pkg-share stack_master)/launch/middle_level.launch.xml">
+    <arg name="map"          value="$(var map)"/>
+    <arg name="sim"          value="$(var sim)"/>
+    <arg name="localization" value="$(var localization)"/>
+  </include>
 
-  <!-- ========== SIMULATOR MODE ========== -->
-  <group if="$(var sim)">
-    <!-- Launch F110 Simulator -->
-    <include file="$(find-pkg-share f1tenth_gym_ros)/launch/gym_bridge_launch.py">
-      <arg name="map_yaml_path" value="$(var map_path).yaml"/>
-    </include>
-
-    <!-- Launch Obstacle Publisher (static + optional dynamic) -->
-    <include file="$(find-pkg-share obstacle_publisher)/launch/obstacle_publisher.launch.xml">
-      <arg name="map_name" value="$(var map)"/>
-    </include>
-  </group>
 
   <!-- ========== LOCALIZATION (Real Hardware Only) ========== -->
   <!-- Simulator provides ground truth pose, no localization needed -->
@@ -40,6 +34,16 @@
       <include file="$(find-pkg-share stack_master)/launch/cartographer_localization.launch.xml">
         <arg name="map" value="$(var map)"/>
       </include>
+      <!-- Convert cartographer PoseStamped → Odometry for EKF -->
+      <node pkg="stack_master" exec="pose_to_odom_node.py" name="pose_to_odom_node" output="screen">
+        <remap from="pose_in"  to="/tracked_pose"/>
+        <remap from="odom_out" to="/tracked_pose/odom"/>
+      </node>
+      <!-- EKF: fuse /vesc/odom (twist) + /tracked_pose/odom (cartographer) → /car_state/odom -->
+      <node pkg="robot_localization" exec="ekf_node" name="ekf_localization" output="screen">
+        <param from="$(find-pkg-share stack_master)/config/ekf_cartographer.yaml"/>
+        <remap from="odometry/filtered" to="/car_state/odom"/>
+      </node>
     </group>
 
     <!-- Particle Filter Localization -->
@@ -47,6 +51,11 @@
       <include file="$(find-pkg-share stack_master)/launch/particle_filter.launch.xml">
         <arg name="map" value="$(var map)"/>
       </include>
+      <!-- EKF: fuse /vesc/odom (twist) + /pf/pose/odom (particle filter) → /car_state/odom -->
+      <node pkg="robot_localization" exec="ekf_node" name="ekf_localization" output="screen">
+        <param from="$(find-pkg-share stack_master)/config/ekf_pf.yaml"/>
+        <remap from="odometry/filtered" to="/car_state/odom"/>
+      </node>
     </group>
   </group>
 

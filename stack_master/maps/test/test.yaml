@@ -1,7 +1,7 @@
-image: f.png
+image: test.pgm
 mode: trinary
 resolution: 0.050
-origin: [-17.750, -1.288, 0]
+origin: [-4.600, -10.800, 0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196

@@ -36,6 +36,16 @@ def generate_launch_description():
     map_yaml_path_arg = DeclareLaunchArgument(
         'map_yaml_path', description="Path to map YAML file. Passed in via top-level launchfile.")
 
+    ego_odom_topic = LaunchConfiguration('ego_odom_topic')
+    ego_odom_topic_arg = DeclareLaunchArgument(
+        'ego_odom_topic', default_value='car_state/odom',
+        description="Topic name for ego odometry output from gym bridge.")
+
+    publish_tf = LaunchConfiguration('publish_tf')
+    publish_tf_arg = DeclareLaunchArgument(
+        'publish_tf', default_value='true',
+        description="Whether gym_bridge publishes map->base_link TF. True only for gt localization mode.")
+
     sim_setup_params = os.path.join(
         get_package_share_directory('stack_master'),
         'config',
@@ -51,14 +61,18 @@ def generate_launch_description():
         name='bridge',
         parameters=[sim_setup_params,
                     {'map_path': map_yaml_path},
-                    {'sim_params': os.path.join(get_package_share_directory('stack_master'), 'config', 'SIM', 'sim_params.yaml')}]
+                    {'sim_params': os.path.join(get_package_share_directory('stack_master'), 'config', 'SIM', 'sim_params.yaml')},
+                    {'ego_odom_topic': ego_odom_topic},
+                    {'publish_tf': publish_tf}],
+        remappings=[('/initialpose', '/sim/initialpose')]
     )
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
         name='rviz',
         arguments=[
-            '-d', os.path.join(get_package_share_directory('stack_master'), 'config', 'SIM', 'sim.rviz')]
+            '-d', os.path.join(get_package_share_directory('stack_master'), 'config', 'SIM', 'sim.rviz')],
+        remappings=[('/initialpose', '/sim/initialpose')]
     )
 
     ego_robot_publisher = Node(
@@ -81,6 +95,8 @@ def generate_launch_description():
 
     # finalize
     ld.add_action(map_yaml_path_arg)
+    ld.add_action(ego_odom_topic_arg)
+    ld.add_action(publish_tf_arg)
     ld.add_action(rviz_node)
     ld.add_action(bridge_node)
     ld.add_action(ego_robot_publisher)

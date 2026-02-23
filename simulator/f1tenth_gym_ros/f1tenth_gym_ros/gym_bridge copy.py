@@ -26,7 +26,6 @@ from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.parameter import ParameterType
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from sensor_msgs.msg import LaserScan
@@ -57,8 +56,6 @@ class GymBridge(Node):
             type=ParameterType.PARAMETER_STRING))
         self.set_descriptor(name='ego_odom_topic', descriptor=ParameterDescriptor(
             type=ParameterType.PARAMETER_STRING))
-        self.set_descriptor(name='ego_pose_topic', descriptor=ParameterDescriptor(
-            type=ParameterType.PARAMETER_STRING))
         self.set_descriptor(name='ego_opp_odom_topic', descriptor=ParameterDescriptor(
             type=ParameterType.PARAMETER_STRING))
         self.set_descriptor(name='ego_scan_topic', descriptor=ParameterDescriptor(
@@ -82,7 +79,6 @@ class GymBridge(Node):
             type=ParameterType.PARAMETER_DOUBLE, description="laserscan related"))
         self.set_descriptor(name='scan_beams', descriptor=ParameterDescriptor(
             type=ParameterType.PARAMETER_INTEGER, description="laserscan related"))
-
         self.set_descriptor(name='map_path', descriptor=ParameterDescriptor(
             type=ParameterType.PARAMETER_STRING))
         self.set_descriptor(name='map_img_ext', descriptor=ParameterDescriptor(
@@ -160,14 +156,10 @@ class GymBridge(Node):
         self.ego_namespace = self.get_parameter('ego_namespace').value
         ego_odom_topic = self.ego_namespace + '/' + \
             self.get_parameter('ego_odom_topic').value
-        ego_pose_topic = self.ego_namespace + '/' + \
-            self.get_parameter('ego_pose_topic').value
         self.scan_distance_to_base_link = self.get_parameter(
             'scan_distance_to_base_link').value
         self.ts = self.get_clock().now().to_msg()
         self.publish_tf = self.get_parameter('publish_tf').value
-        self._last_published_ts = None
-        self._ts_lock = threading.Lock()
 
         if num_agents == 2:
             self.has_opp = True
@@ -200,11 +192,8 @@ class GymBridge(Node):
                 poses=np.array([[sx, sy, stheta]]))
             self.ego_scan = list(self.obs['scans'][0])
 
-        # sim physical step timer
-        cb_group1= ReentrantCallbackGroup()
-        self.drive_timer = self.create_timer(0.01, self.drive_timer_callback, callback_group=cb_group1)
-        # topic publishing timer
-        self.timer = self.create_timer(0.01, self.timer_callback, callback_group=cb_group1)
+        # single timer: physics step + publish (merged to avoid race condition on self.ts)
+        self.drive_timer = self.create_timer(0.02, self.drive_timer_callback)
 
         # transform broadcaster
         self.br = TransformBroadcaster(self)
@@ -213,7 +202,6 @@ class GymBridge(Node):
         self.ego_scan_pub = self.create_publisher(
             LaserScan, ego_scan_topic, 10)
         self.ego_odom_pub = self.create_publisher(Odometry, ego_odom_topic, 10)
-        self.ego_pose_pub = self.create_publisher(PoseStamped, ego_pose_topic, 10)
         self.ego_drive_published = False
         if num_agents == 2:
             self.opp_scan_pub = self.create_publisher(
@@ -497,35 +485,25 @@ class GymBridge(Node):
         self.map_pub.publish(grid_msg)
 
     def drive_timer_callback(self):
-        # Update map if obstacles changed (DT recalculation)
+        # 1. Update map if obstacles changed (DT recalculation)
         if self.map_needs_update:
             self._update_gym_map()
 
-        # Always step the simulation to generate new scan noise
+        # 2. Physics step
         if not self.has_opp:
             self.obs, _, self.done, _ = self.env.step(
                 np.array([[self.ego_steer, self.ego_requested_speed]]))
         elif self.has_opp and self.opp_drive_published:
             self.obs, _, self.done, _ = self.env.step(np.array(
                 [[self.ego_steer, self.ego_requested_speed], [self.opp_steer, self.opp_requested_speed]]))
-        with self._ts_lock:
-            self.ts = self.get_clock().now().to_msg()
+
+        # 3. Snapshot timestamp once, then update state and publish atomically
+        self.ts = self.get_clock().now().to_msg()
         self._update_sim_state()
 
-    def timer_callback(self):
-        # Capture ts snapshot inside lock to guarantee we publish exactly this timestamp.
-        # self.ts can be updated by drive_timer_callback concurrently, so we must
-        # snapshot it atomically and use only the snapshot → no duplicate timestamps.
-        with self._ts_lock:
-            ts = self.ts  # snapshot
-            ts_key = (ts.sec, ts.nanosec)
-            if ts_key == self._last_published_ts:
-                return
-            self._last_published_ts = ts_key
-
-        # pub scans (use snapshot ts, not self.ts)
+        # 4. Publish scan (every physics step)
         scan = LaserScan()
-        scan.header.stamp = ts
+        scan.header.stamp = self.ts
         scan.header.frame_id = (self.ego_namespace + '/laser') if self.ego_namespace else 'laser'
         scan.angle_min = self.angle_min
         scan.angle_max = self.angle_max
@@ -533,12 +511,12 @@ class GymBridge(Node):
         scan.range_min = 0.
         scan.range_max = 30.
         scan.ranges = self.ego_scan
-        scan.intensities = self.ego_scan  # Use range as intensity for rainbow coloring
+        scan.intensities = self.ego_scan
         self.ego_scan_pub.publish(scan)
 
         if self.has_opp:
             opp_scan = LaserScan()
-            opp_scan.header.stamp = ts
+            opp_scan.header.stamp = self.ts
             opp_scan.header.frame_id = self.opp_namespace + '/laser'
             opp_scan.angle_min = self.angle_min
             opp_scan.angle_max = self.angle_max
@@ -548,10 +526,11 @@ class GymBridge(Node):
             opp_scan.ranges = self.opp_scan
             self.opp_scan_pub.publish(opp_scan)
 
-        self._publish_odom(ts)
+        # 5. Publish odom and TF
+        self._publish_odom(self.ts)
         if self.publish_tf:
-            self._publish_transforms(ts)
-            self._publish_wheel_transforms(ts)
+            self._publish_transforms(self.ts)
+            self._publish_wheel_transforms(self.ts)
 
     def _update_sim_state(self):
         self.ego_scan = list(self.obs['scans'][0])
@@ -586,13 +565,14 @@ class GymBridge(Node):
         ego_odom.twist.twist.linear.x = self.ego_speed[0]
         ego_odom.twist.twist.linear.y = self.ego_speed[1]
         ego_odom.twist.twist.angular.z = self.ego_speed[2]
+        # Diagonal twist covariance: zero covariance → singular matrix → EKF NaN
+        ego_odom.twist.covariance[0]  = 0.01   # vx
+        ego_odom.twist.covariance[7]  = 1e6    # vy  (unused in 2D)
+        ego_odom.twist.covariance[14] = 1e6    # vz  (unused in 2D)
+        ego_odom.twist.covariance[21] = 1e6    # vroll  (unused in 2D)
+        ego_odom.twist.covariance[28] = 1e6    # vpitch (unused in 2D)
+        ego_odom.twist.covariance[35] = 0.01   # vyaw
         self.ego_odom_pub.publish(ego_odom)
-        
-        # publish pose
-        pose_msg = PoseStamped()
-        pose_msg.header = ego_odom.header
-        pose_msg.pose = ego_odom.pose.pose
-        self.ego_pose_pub.publish(pose_msg)
 
         if self.has_opp:
             opp_odom = Odometry()
@@ -628,7 +608,7 @@ class GymBridge(Node):
         ego_ts.transform = ego_t
         ego_ts.header.stamp = ts
         ego_ts.header.frame_id = 'map'
-        ego_ts.child_frame_id = self.ego_namespace + '/base_link'
+        ego_ts.child_frame_id = (self.ego_namespace + '/base_link') if self.ego_namespace else 'base_link'
         self.br.sendTransform(ego_ts)
 
         if self.has_opp:
@@ -685,7 +665,7 @@ class GymBridge(Node):
 def main(args=None):
     rclpy.init(args=args)
     gym_bridge = GymBridge()
-    
+
     executor = MultiThreadedExecutor()
     executor.add_node(gym_bridge)
 
@@ -693,7 +673,6 @@ def main(args=None):
         executor.spin()
     except KeyboardInterrupt:
         gym_bridge.get_logger().info('Exiting gym_bridge')
-    
 
     gym_bridge.destroy_node()
     rclpy.shutdown()

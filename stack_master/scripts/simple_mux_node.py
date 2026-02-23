@@ -73,14 +73,14 @@ class SimpleMuxNode(Node):
 
         self.create_subscription(
             Odometry,
-            '/odom',
+            'car_state/odom',
             self.odom_callback,
             10
         )
 
         self.create_subscription(
             Float64,
-            '/vel_planner',
+            'vel_planner',
             self.planner_callback,
             10
         )
@@ -101,7 +101,7 @@ class SimpleMuxNode(Node):
 
         self.current_pub = self.create_publisher(
             Float64,
-            '/commands/motor/current',
+            'vesc/commands/motor/current',
             10
         )
 
@@ -140,16 +140,20 @@ class SimpleMuxNode(Node):
 
     def timer_callback(self):
         if self.current_host is None:
+            self.zero_msg.header.stamp = self.get_clock().now().to_msg()
+            self.drive_pub.publish(self.zero_msg)
             return
 
         if self.current_host == "autodrive" and self.check_uptodate(self.autodrive):
             drive_msg = self.clip_servo(self.autodrive)
-            drive_msg.drive.steering_angle *= 1.1
             self.drive_pub.publish(drive_msg)
 
         elif self.current_host == "humandrive" and self.check_uptodate(self.human_drive):
             drive_msg = self.clip_servo(self.human_drive)
             self.drive_pub.publish(drive_msg)
+        else:
+            self.zero_msg.header.stamp = self.get_clock().now().to_msg()
+            self.drive_pub.publish(self.zero_msg)
 
     def planner_callback(self, msg):
         self.vel_planner = msg.data
