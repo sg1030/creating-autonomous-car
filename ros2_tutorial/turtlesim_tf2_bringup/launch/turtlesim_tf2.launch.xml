@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- 1. turtlesim node -->
+  <node pkg="turtlesim" exec="turtlesim_node" name="turtlesim" output="screen"/>
+
+  <!-- 2. Spawn turtle2 after turtlesim is ready -->
+  <timer period="1.0">
+    <executable
+      cmd="ros2 service call /spawn turtlesim/srv/Spawn &quot;{x: 4.0, y: 2.0, theta: 0.0, name: 'turtle2'}&quot;"
+      output="screen"/>
+  </timer>
+
+  <!-- 3. TF broadcaster for turtle1 -->
+  <timer period="2.0">
+    <node pkg="turtle_tf2_py" exec="turtle_tf2_broadcaster" name="tf_pub_turtle1" output="screen">
+      <param name="turtlename" value="turtle1"/>
+      <remap from="/turtle/pose" to="/turtle1/pose"/>
+    </node>
+
+    <!-- 4. TF broadcaster for turtle2 -->
+    <node pkg="turtle_tf2_py" exec="turtle_tf2_broadcaster" name="tf_pub_turtle2" output="screen">
+      <param name="turtlename" value="turtle2"/>
+      <remap from="/turtle/pose" to="/turtle2/pose"/>
+    </node>
+  </timer>
+
+  <!-- 5. TF listener (makes turtle2 follow turtle1) -->
+  <timer period="3.0">
+    <node pkg="turtle_tf2_py" exec="turtle_tf2_listener" name="turtle_tf2_listener" output="screen"/>
+  </timer>
+</launch>
