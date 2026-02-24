@@ -9,9 +9,8 @@
   <!-- VESC to Odom node -->
   <node pkg="vesc_ackermann" exec="vesc_to_odom_node" name="vesc_to_odom_node" output="screen">
     <param from="$(var vesc_config)" />
-    <param name="odom_frame" value="odom" />
+    <!-- <param name="odom_frame" value="odom" />
     <param name="base_frame" value="base_link" />
-    <param name="use_servo_cmd_to_calc_angular_velocity" value="true" />
-    <param name="publish_tf" value="true" />
+    <param name="use_servo_cmd_to_calc_angular_velocity" value="true" /> -->
   </node>
 </launch>

@@ -22,7 +22,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'controller_node = controller.controller_ros:main',
+            'controller_node    = controller.controller_ros:main',
+            'wall_follow_node   = controller.wallfollow:main',
+            'gap_follow_node    = controller.gapfollow:main',
         ],
     },
 )

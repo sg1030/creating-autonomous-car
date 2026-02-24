@@ -150,16 +150,12 @@ class DetectNode(Node):
 
         for det in obstacles:
             obs = Obstacle()
-            # f110_msgs/Obstacle fields – fill what is available from 2-D detection.
-            # See f110_msgs/msg/Obstacle.msg for the full field list.
             obs.id = det.id
-            obs.pose.pose.position.x = det.cx
-            obs.pose.pose.position.y = det.cy
-            obs.pose.pose.position.z = 0.0
-            obs.pose.pose.orientation.w = 1.0   # identity rotation
-
-            # Simple size estimate from bounding box
-            # TODO: fill obs.size if the message supports it
+            obs.x_m = det.cx
+            obs.y_m = det.cy
+            obs.size = max(det.width, det.height, 0.05)
+            obs.is_visible = True
+            obs.is_static = False
             arr.obstacles.append(obs)
 
         return arr

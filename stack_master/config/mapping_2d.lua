@@ -40,7 +40,7 @@ options = {
   published_frame = "base_link",
   odom_frame = "odom",
 
-  publish_to_tf = true, -- default:true
+  publish_to_tf = false, -- default:true
   publish_tracked_pose = true, -- default:false
   use_pose_extrapolator = true, -- default:true
 

@@ -4,9 +4,9 @@ ekf_localization:
     frequency     : 100.0
     sensor_timeout: 0.1
     two_d_mode    : true
-    publish_tf    : false  # Cartographer already publishes map→odom TF
+    publish_tf    : true  # Cartographer already publishes map→odom TF
 
-    odom_frame     : odom
+    odom_frame     : base_link
     base_link_frame: base_link
     world_frame    : map        # absolute pose in map frame
 

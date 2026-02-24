@@ -74,6 +74,7 @@ class ParticleFiler(Node):
         self.declare_parameter('rangelib_variant')
         self.declare_parameter('fine_timing')
         self.declare_parameter('publish_odom')
+        self.declare_parameter('publish_tf')
         self.declare_parameter('viz')
         self.declare_parameter('z_short')
         self.declare_parameter('z_max')
@@ -97,6 +98,7 @@ class ParticleFiler(Node):
         self.RANGELIB_VAR         = self.get_parameter('rangelib_variant').value
         self.SHOW_FINE_TIMING     = self.get_parameter('fine_timing').value
         self.PUBLISH_ODOM         = self.get_parameter('publish_odom').value
+        self.PUBLISH_TF           = self.get_parameter('publish_tf').value
         self.DO_VIZ               = self.get_parameter('viz').value
 
         # sensor model constants
@@ -167,7 +169,8 @@ class ParticleFiler(Node):
             self.odom_pub = self.create_publisher(Odometry, '/pf/pose/odom', 1)
 
         # these topics are for coordinate space things
-        self.pub_tf = TransformBroadcaster(self)
+        if self.PUBLISH_TF:
+            self.pub_tf = TransformBroadcaster(self)    
 
         # these topics are to receive data from the racecar
         self.laser_sub = self.create_subscription(
@@ -239,23 +242,23 @@ class ParticleFiler(Node):
         ''' Publish a tf for the car. This tells ROS where the car is with respect to the map. '''
         if stamp == None:
             stamp = self.get_clock().now().to_msg()
-
-        t = TransformStamped()
-        # header
-        t.header.stamp = stamp
-        t.header.frame_id = 'map'
-        t.child_frame_id = 'laser'
-        # translation
-        t.transform.translation.x = pose[0]
-        t.transform.translation.y = pose[1]
-        t.transform.translation.z = 0.0
-        q = tf_transformations.quaternion_from_euler(0., 0., pose[2])
-        # rotation
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-        self.pub_tf.sendTransform(t)
+        if self.PUBLISH_TF:
+            t = TransformStamped()
+            # header
+            t.header.stamp = stamp
+            t.header.frame_id = 'map'
+            t.child_frame_id = 'laser'
+            # translation
+            t.transform.translation.x = pose[0]
+            t.transform.translation.y = pose[1]
+            t.transform.translation.z = 0.0
+            q = tf_transformations.quaternion_from_euler(0., 0., pose[2])
+            # rotation
+            t.transform.rotation.x = q[0]
+            t.transform.rotation.y = q[1]
+            t.transform.rotation.z = q[2]
+            t.transform.rotation.w = q[3]
+            self.pub_tf.sendTransform(t)
         # also publish odometry to facilitate getting the localization pose
         if self.PUBLISH_ODOM:
             odom = Odometry()
@@ -320,12 +323,12 @@ class ParticleFiler(Node):
         ls = LaserScan()
         ls.header.stamp = self.last_stamp
         ls.header.frame_id = '/laser'
-        ls.angle_min = np.min(angles)
-        ls.angle_max = np.max(angles)
-        ls.angle_increment = np.abs(angles[0] - angles[1])
-        ls.range_min = 0
-        ls.range_max = np.max(ranges)
-        ls.ranges = ranges
+        ls.angle_min = float(np.min(angles))
+        ls.angle_max = float(np.max(angles))
+        ls.angle_increment = float(np.abs(angles[0] - angles[1]))
+        ls.range_min = 0.0
+        ls.range_max = float(np.max(ranges))
+        ls.ranges = ranges.tolist()
         self.pub_fake_scan.publish(ls)
 
     def lidarCB(self, msg):

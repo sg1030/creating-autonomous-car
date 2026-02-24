@@ -43,7 +43,7 @@ options = {
   landmarks_sampling_ratio = 1.,
   publish_tracked_pose = true, 
   pose_publish_period_sec = 1e-2,
-  publish_to_tf = true,
+  publish_to_tf = false,
 }
 
 MAP_BUILDER.use_trajectory_builder_2d = true -- for 2d slam or localization

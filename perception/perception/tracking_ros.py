@@ -146,11 +146,12 @@ class TrackingNode(Node):
         """Convert f110_msgs/ObstacleArray → list[DetectedObstacle]."""
         dets = []
         for i, obs in enumerate(msg.obstacles):
+            size = float(obs.size) if obs.size > 0.0 else 0.2
             dets.append(DetectedObstacle(
-                cx=obs.pose.pose.position.x,
-                cy=obs.pose.pose.position.y,
-                width=0.2,     # TODO: parse from msg if field available
-                height=0.2,
+                cx=obs.x_m,
+                cy=obs.y_m,
+                width=size,
+                height=size,
                 num_points=0,
                 id=i,
             ))
@@ -168,13 +169,15 @@ class TrackingNode(Node):
         for t in tracks:
             obs = Obstacle()
             obs.id = t.track_id
-            obs.pose.pose.position.x = t.cx
-            obs.pose.pose.position.y = t.cy
-            obs.pose.pose.position.z = 0.0
-            obs.pose.pose.orientation.w = 1.0
-
-            # Velocity — pack into twist if the message supports it
-            # TODO: add obs.velocity fields if available in f110_msgs/Obstacle
+            obs.x_m = t.cx
+            obs.y_m = t.cy
+            obs.size = max(t.width, t.height, 0.05)
+            # Note: vs/vd are Frenet velocities in this message. Here we only
+            # have Cartesian tracking outputs, so expose vx/vy as a best-effort placeholder.
+            obs.vs = t.vx
+            obs.vd = t.vy
+            obs.is_static = math.hypot(t.vx, t.vy) < 0.1
+            obs.is_visible = True
 
             arr.obstacles.append(obs)
 

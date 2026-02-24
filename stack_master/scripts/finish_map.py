@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 from cartographer_ros_msgs.srv import FinishTrajectory, WriteState
 from geometry_msgs.msg import PoseStamped
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 import subprocess
 import sys
 import os
@@ -44,11 +45,17 @@ class FinishMapNode(Node):
             self.get_logger().warn('/write_state service not available')
 
         # Subscribe to /goal_pose topic from RViz
+        # Use RELIABLE QoS to prevent message loss over network
+        goal_pose_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10)
         self.goal_pose_subscription = self.create_subscription(
             PoseStamped,
             '/goal_pose',
             self.goal_pose_callback,
-            10)
+            goal_pose_qos)
 
         # Flag to trigger map saving
         self.should_save = False

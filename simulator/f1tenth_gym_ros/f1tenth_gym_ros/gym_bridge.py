@@ -111,11 +111,6 @@ class GymBridge(Node):
         self.set_descriptor(name='kb_teleop', descriptor=ParameterDescriptor(
             type=ParameterType.PARAMETER_BOOL, description="Whether teleop is enabled"))
 
-        if not self.has_parameter('publish_tf'):
-            self.declare_parameter('publish_tf', True)
-        self.set_descriptor(name='publish_tf', descriptor=ParameterDescriptor(
-            type=ParameterType.PARAMETER_BOOL, description="Whether to publish map->base_link TF"))
-
         # check num_agents
         num_agents = self.get_parameter('num_agent').value
         if num_agents < 1 or num_agents > 2:
@@ -152,6 +147,7 @@ class GymBridge(Node):
         self.ego_requested_speed = 0.0
         self.ego_steer = 0.0
         self.ego_collision = False
+        self.ego_quat = euler.euler2quat(0., 0., stheta, axes='sxyz')
         ego_scan_topic = self.get_parameter('ego_scan_topic').value
         ego_drive_topic = self.get_parameter('ego_drive_topic').value
         self.angle_min = -scan_fov / 2.
@@ -165,9 +161,6 @@ class GymBridge(Node):
         self.scan_distance_to_base_link = self.get_parameter(
             'scan_distance_to_base_link').value
         self.ts = self.get_clock().now().to_msg()
-        self.publish_tf = self.get_parameter('publish_tf').value
-        self._last_published_ts = None
-        self._ts_lock = threading.Lock()
 
         if num_agents == 2:
             self.has_opp = True
@@ -180,6 +173,7 @@ class GymBridge(Node):
             self.opp_requested_speed = 0.0
             self.opp_steer = 0.0
             self.opp_collision = False
+            self.opp_quat = euler.euler2quat(0., 0., stheta1, axes='sxyz')
             self.obs, _, self.done, _ = self.env.reset(
                 poses=np.array([[sx, sy, stheta], [sx1, sy1, stheta1]]))
             self.ego_scan = list(self.obs['scans'][0])
@@ -203,8 +197,8 @@ class GymBridge(Node):
         # sim physical step timer
         cb_group1= ReentrantCallbackGroup()
         self.drive_timer = self.create_timer(0.01, self.drive_timer_callback, callback_group=cb_group1)
-        # topic publishing timer
-        self.timer = self.create_timer(0.01, self.timer_callback, callback_group=cb_group1)
+        # topic publishing timer (50Hz is sufficient for publishing)
+        self.timer = self.create_timer(0.02, self.timer_callback, callback_group=cb_group1)
 
         # transform broadcaster
         self.br = TransformBroadcaster(self)
@@ -213,6 +207,7 @@ class GymBridge(Node):
         self.ego_scan_pub = self.create_publisher(
             LaserScan, ego_scan_topic, 10)
         self.ego_odom_pub = self.create_publisher(Odometry, ego_odom_topic, 10)
+        self.fake_vesc_odom_pub = self.create_publisher(Odometry, '/vesc/odom', 10)
         self.ego_pose_pub = self.create_publisher(PoseStamped, ego_pose_topic, 10)
         self.ego_drive_published = False
         if num_agents == 2:
@@ -267,6 +262,8 @@ class GymBridge(Node):
         self.static_obstacles = []
         self.dynamic_obstacle = None
         self.map_needs_update = False
+        self._last_map_update_time = 0.0  # for throttling DT recalculation
+        self._flipped_map = None          # cached flipped map image
 
         # Load base map for obstacle rendering
         self.base_map_img = None
@@ -370,6 +367,7 @@ class GymBridge(Node):
             self.map_height = self.base_map_img.shape[0]
             self.map_width = self.base_map_img.shape[1]
             self.current_map_img = self.base_map_img.copy()
+            self._flipped_map = np.flipud(self.current_map_img)
 
             self.get_logger().info(f'[GymBridge] Base map loaded: {self.base_map_img.shape}, '
                                    f'res={self.map_resolution}')
@@ -463,9 +461,9 @@ class GymBridge(Node):
 
         # Update gym environment's distance transform
         # The gym expects the image with origin at bottom-left (flipped)
-        flipped = np.flipud(self.current_map_img)
+        self._flipped_map = np.flipud(self.current_map_img)
         self.env.unwrapped.update_map_from_array(
-            flipped, self.map_resolution,
+            self._flipped_map, self.map_resolution,
             self.map_origin_x, self.map_origin_y)
 
         # Publish updated /map
@@ -488,18 +486,20 @@ class GymBridge(Node):
         grid_msg.info.origin.orientation.w = 1.0
 
         # OccupancyGrid origin is bottom-left, image origin is top-left
-        flipped_img = np.flipud(self.current_map_img)
-        occupancy = np.zeros(flipped_img.shape, dtype=np.int8)
-        occupancy[flipped_img < 128] = 100   # occupied
-        occupancy[flipped_img >= 128] = 0     # free
-        grid_msg.data = occupancy.flatten().tolist()
+        # Reuse cached flipped map to avoid redundant np.flipud
+        flipped_img = self._flipped_map if self._flipped_map is not None else np.flipud(self.current_map_img)
+        occupancy = np.where(flipped_img < 128, np.int8(100), np.int8(0))
+        grid_msg.data = occupancy.flatten()
 
         self.map_pub.publish(grid_msg)
 
     def drive_timer_callback(self):
-        # Update map if obstacles changed (DT recalculation)
+        # Update map if obstacles changed (DT recalculation), throttled to max 10Hz
         if self.map_needs_update:
-            self._update_gym_map()
+            now = self.get_clock().now().nanoseconds * 1e-9
+            if now - self._last_map_update_time >= 0.1:
+                self._update_gym_map()
+                self._last_map_update_time = now
 
         # Always step the simulation to generate new scan noise
         if not self.has_opp:
@@ -508,24 +508,13 @@ class GymBridge(Node):
         elif self.has_opp and self.opp_drive_published:
             self.obs, _, self.done, _ = self.env.step(np.array(
                 [[self.ego_steer, self.ego_requested_speed], [self.opp_steer, self.opp_requested_speed]]))
-        with self._ts_lock:
-            self.ts = self.get_clock().now().to_msg()
+        self.ts = self.get_clock().now().to_msg()
         self._update_sim_state()
 
     def timer_callback(self):
-        # Capture ts snapshot inside lock to guarantee we publish exactly this timestamp.
-        # self.ts can be updated by drive_timer_callback concurrently, so we must
-        # snapshot it atomically and use only the snapshot → no duplicate timestamps.
-        with self._ts_lock:
-            ts = self.ts  # snapshot
-            ts_key = (ts.sec, ts.nanosec)
-            if ts_key == self._last_published_ts:
-                return
-            self._last_published_ts = ts_key
-
-        # pub scans (use snapshot ts, not self.ts)
+        # pub scans
         scan = LaserScan()
-        scan.header.stamp = ts
+        scan.header.stamp = self.ts
         scan.header.frame_id = (self.ego_namespace + '/laser') if self.ego_namespace else 'laser'
         scan.angle_min = self.angle_min
         scan.angle_max = self.angle_max
@@ -538,7 +527,7 @@ class GymBridge(Node):
 
         if self.has_opp:
             opp_scan = LaserScan()
-            opp_scan.header.stamp = ts
+            opp_scan.header.stamp = self.ts
             opp_scan.header.frame_id = self.opp_namespace + '/laser'
             opp_scan.angle_min = self.angle_min
             opp_scan.angle_max = self.angle_max
@@ -548,21 +537,22 @@ class GymBridge(Node):
             opp_scan.ranges = self.opp_scan
             self.opp_scan_pub.publish(opp_scan)
 
-        self._publish_odom(ts)
-        if self.publish_tf:
-            self._publish_transforms(ts)
-            self._publish_wheel_transforms(ts)
+        # pub tf
+        self._publish_odom(self.ts)
+        self._publish_transforms(self.ts)
+        self._publish_wheel_transforms(self.ts)
 
     def _update_sim_state(self):
-        self.ego_scan = list(self.obs['scans'][0])
+        self.ego_scan = self.obs['scans'][0]
         if self.has_opp:
-            self.opp_scan = list(self.obs['scans'][1])
+            self.opp_scan = self.obs['scans'][1]
             self.opp_pose[0] = self.obs['poses_x'][1]
             self.opp_pose[1] = self.obs['poses_y'][1]
             self.opp_pose[2] = self.obs['poses_theta'][1]
             self.opp_speed[0] = self.obs['linear_vels_x'][1]
             self.opp_speed[1] = self.obs['linear_vels_y'][1]
             self.opp_speed[2] = self.obs['ang_vels_z'][1]
+            self.opp_quat = euler.euler2quat(0., 0., self.opp_pose[2], axes='sxyz')
 
         self.ego_pose[0] = self.obs['poses_x'][0]
         self.ego_pose[1] = self.obs['poses_y'][0]
@@ -570,6 +560,7 @@ class GymBridge(Node):
         self.ego_speed[0] = self.obs['linear_vels_x'][0]
         self.ego_speed[1] = self.obs['linear_vels_y'][0]
         self.ego_speed[2] = self.obs['ang_vels_z'][0]
+        self.ego_quat = euler.euler2quat(0., 0., self.ego_pose[2], axes='sxyz')
 
     def _publish_odom(self, ts):
         ego_odom = Odometry()
@@ -578,15 +569,15 @@ class GymBridge(Node):
         ego_odom.child_frame_id = (self.ego_namespace + '/base_link') if self.ego_namespace else 'base_link'
         ego_odom.pose.pose.position.x = self.ego_pose[0]
         ego_odom.pose.pose.position.y = self.ego_pose[1]
-        ego_quat = euler.euler2quat(0., 0., self.ego_pose[2], axes='sxyz')
-        ego_odom.pose.pose.orientation.x = ego_quat[1]
-        ego_odom.pose.pose.orientation.y = ego_quat[2]
-        ego_odom.pose.pose.orientation.z = ego_quat[3]
-        ego_odom.pose.pose.orientation.w = ego_quat[0]
+        ego_odom.pose.pose.orientation.x = self.ego_quat[1]
+        ego_odom.pose.pose.orientation.y = self.ego_quat[2]
+        ego_odom.pose.pose.orientation.z = self.ego_quat[3]
+        ego_odom.pose.pose.orientation.w = self.ego_quat[0]
         ego_odom.twist.twist.linear.x = self.ego_speed[0]
         ego_odom.twist.twist.linear.y = self.ego_speed[1]
         ego_odom.twist.twist.angular.z = self.ego_speed[2]
         self.ego_odom_pub.publish(ego_odom)
+        self.fake_vesc_odom_pub.publish(ego_odom)
         
         # publish pose
         pose_msg = PoseStamped()
@@ -601,11 +592,10 @@ class GymBridge(Node):
             opp_odom.child_frame_id = self.opp_namespace + '/base_link'
             opp_odom.pose.pose.position.x = self.opp_pose[0]
             opp_odom.pose.pose.position.y = self.opp_pose[1]
-            opp_quat = euler.euler2quat(0., 0., self.opp_pose[2], axes='sxyz')
-            opp_odom.pose.pose.orientation.x = opp_quat[1]
-            opp_odom.pose.pose.orientation.y = opp_quat[2]
-            opp_odom.pose.pose.orientation.z = opp_quat[3]
-            opp_odom.pose.pose.orientation.w = opp_quat[0]
+            opp_odom.pose.pose.orientation.x = self.opp_quat[1]
+            opp_odom.pose.pose.orientation.y = self.opp_quat[2]
+            opp_odom.pose.pose.orientation.z = self.opp_quat[3]
+            opp_odom.pose.pose.orientation.w = self.opp_quat[0]
             opp_odom.twist.twist.linear.x = self.opp_speed[0]
             opp_odom.twist.twist.linear.y = self.opp_speed[1]
             opp_odom.twist.twist.angular.z = self.opp_speed[2]
@@ -618,11 +608,10 @@ class GymBridge(Node):
         ego_t.translation.x = self.ego_pose[0]
         ego_t.translation.y = self.ego_pose[1]
         ego_t.translation.z = 0.0
-        ego_quat = euler.euler2quat(0.0, 0.0, self.ego_pose[2], axes='sxyz')
-        ego_t.rotation.x = ego_quat[1]
-        ego_t.rotation.y = ego_quat[2]
-        ego_t.rotation.z = ego_quat[3]
-        ego_t.rotation.w = ego_quat[0]
+        ego_t.rotation.x = self.ego_quat[1]
+        ego_t.rotation.y = self.ego_quat[2]
+        ego_t.rotation.z = self.ego_quat[3]
+        ego_t.rotation.w = self.ego_quat[0]
 
         ego_ts = TransformStamped()
         ego_ts.transform = ego_t
@@ -636,12 +625,10 @@ class GymBridge(Node):
             opp_t.translation.x = self.opp_pose[0]
             opp_t.translation.y = self.opp_pose[1]
             opp_t.translation.z = 0.0
-            opp_quat = euler.euler2quat(
-                0.0, 0.0, self.opp_pose[2], axes='sxyz')
-            opp_t.rotation.x = opp_quat[1]
-            opp_t.rotation.y = opp_quat[2]
-            opp_t.rotation.z = opp_quat[3]
-            opp_t.rotation.w = opp_quat[0]
+            opp_t.rotation.x = self.opp_quat[1]
+            opp_t.rotation.y = self.opp_quat[2]
+            opp_t.rotation.z = self.opp_quat[3]
+            opp_t.rotation.w = self.opp_quat[0]
 
             opp_ts = TransformStamped()
             opp_ts.transform = opp_t

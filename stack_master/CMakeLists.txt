@@ -36,6 +36,7 @@ install(PROGRAMS
   scripts/set_initial_pose_node.py
   scripts/finish_map.py
   scripts/pose_to_odom_node.py
+  scripts/map_relay_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
