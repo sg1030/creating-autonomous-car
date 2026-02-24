@@ -18,7 +18,9 @@
   <depend>ackermann_msgs</depend>
   <depend>joy</depend>
   <depend>cartographer_ros_msgs</depend>
+  <depend>robot_localization</depend>
 
+  <exec_depend>controller</exec_depend>
   <exec_depend>vesc_driver</exec_depend>
   <exec_depend>urg_node</exec_depend>
   <exec_depend>tf2_ros</exec_depend>

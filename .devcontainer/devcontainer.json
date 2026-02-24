@@ -1,0 +1,40 @@
+{
+    "name": "Creating Autonomous Car (Jazzy)",
+    "privileged": true,
+    "remoteUser": "${localEnv:USER}",
+    "image": "creating_autonomous_car_ros2:jazzy",
+    "workspaceFolder": "/ws/src/creating_autonomous_car/",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/ws/src/creating_autonomous_car,type=bind",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "ms-python.python",
+                "ms-iot.vscode-ros",
+                "twxs.cmake",
+                "redhat.vscode-xml",
+                "foxundermoon.shell-format"
+            ]
+        }
+    },
+    "containerEnv": {
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "XAUTHORITY": "/tmp/.Xauthority",
+        "ROS_DOMAIN_ID": "42",
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
+    },
+    "runArgs": [
+        "--name", "creating_autonomous_car_devcontainer",
+        "--net", "host",
+        "--privileged"
+    ],
+    "mounts": [
+        "source=${localEnv:HOME}/.Xauthority,target=/tmp/.Xauthority,type=bind,consistency=cached",
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+        "source=${localWorkspaceFolder}/../cache/build,target=/ws/build,type=bind",
+        "source=${localWorkspaceFolder}/../cache/install,target=/ws/install,type=bind",
+        "source=${localWorkspaceFolder}/../cache/log,target=/ws/log,type=bind"
+    ],
+    "postCreateCommand": "mkdir -p /ws/build /ws/install /ws/log"
+}
