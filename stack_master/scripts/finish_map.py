@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 from cartographer_ros_msgs.srv import FinishTrajectory, WriteState
 from geometry_msgs.msg import PoseStamped
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 import subprocess
 import sys
 import os
@@ -44,11 +45,17 @@ class FinishMapNode(Node):
             self.get_logger().warn('/write_state service not available')
 
         # Subscribe to /goal_pose topic from RViz
+        # Use RELIABLE QoS to prevent message loss over network
+        goal_pose_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10)
         self.goal_pose_subscription = self.create_subscription(
             PoseStamped,
             '/goal_pose',
             self.goal_pose_callback,
-            10)
+            goal_pose_qos)
 
         # Flag to trigger map saving
         self.should_save = False
@@ -136,7 +143,8 @@ class FinishMapNode(Node):
             cmd = [
                 'ros2', 'run', 'nav2_map_server', 'map_saver_cli',
                 '-f', map_path,
-                '--ros-args', '-p', 'save_map_timeout:=10000.0'
+                '--ros-args', '-p', 'save_map_timeout:=10000.0',
+                '-r', '/map:=/map_carto'
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
@@ -157,6 +165,34 @@ class FinishMapNode(Node):
         self.get_logger().info(f"  - {map_path}.png")
         self.get_logger().info(f"  - {map_path}.yaml")
         self.get_logger().info("="*60 + "\n")
+
+        self.rebuild_workspace()
+
+    def rebuild_workspace(self):
+        """Run colcon build with symlink-install so the new map is immediately available."""
+        # maps_dir = .../ws/src/creating_autonomous_car/stack_master/maps/<map_name>
+        # workspace root is 5 levels up
+        ws_dir = os.path.abspath(os.path.join(self.maps_dir, '../../../../..'))
+        self.get_logger().info(f'Rebuilding workspace at: {ws_dir}')
+
+        cmd = (
+            'colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release'
+            ' && source install/setup.bash'
+        )
+        try:
+            result = subprocess.run(
+                ['bash', '-c', cmd],
+                cwd=ws_dir,
+                timeout=300
+            )
+            if result.returncode == 0:
+                self.get_logger().info('Workspace rebuilt successfully. New map is now available.')
+            else:
+                self.get_logger().error(f'colcon build failed (exit code {result.returncode})')
+        except subprocess.TimeoutExpired:
+            self.get_logger().error('colcon build timed out (>5 min)')
+        except Exception as e:
+            self.get_logger().error(f'Error during colcon build: {str(e)}')
 
         # Shutdown the node
         self.get_logger().info('Shutting down finish_map node...')

@@ -43,7 +43,7 @@ options = {
   landmarks_sampling_ratio = 1.,
   publish_tracked_pose = true, 
   pose_publish_period_sec = 1e-2,
-
+  publish_to_tf = false,
 }
 
 MAP_BUILDER.use_trajectory_builder_2d = true -- for 2d slam or localization
@@ -52,14 +52,14 @@ MAP_BUILDER.num_background_threads = 6 -- Multi-threading으로 성능 최적화
 TRAJECTORY_BUILDER_2D.min_range = 0.12
 TRAJECTORY_BUILDER_2D.max_range = 10.
 TRAJECTORY_BUILDER_2D.missing_data_ray_length = 3.
-TRAJECTORY_BUILDER_2D.use_imu_data = false
+TRAJECTORY_BUILDER_2D.use_imu_data = true
 TRAJECTORY_BUILDER_2D.use_online_correlative_scan_matching = true 
 TRAJECTORY_BUILDER_2D.motion_filter.max_angle_radians = math.rad(0.1)
 -- TRAJECTORY_BUILDER_2D.ceres_scan_matcher.translation_weight = 5 --0.01
 TRAJECTORY_BUILDER_2D.ceres_scan_matcher.rotation_weight = 0.1 --25
 TRAJECTORY_BUILDER_2D.num_accumulated_range_data = 10
 
-POSE_GRAPH.constraint_builder.min_score = 0.80
+POSE_GRAPH.constraint_builder.min_score = 0.60
 POSE_GRAPH.constraint_builder.global_localization_min_score = 0.80
 
 TRAJECTORY_BUILDER.pure_localization_trimmer = {
