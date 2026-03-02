@@ -1,0 +1,28 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        - USERNAME=${USER}
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+    image: creating_autonomous_car_ros2:jazzy
+    container_name: creating_autonomous_car_dev
+    privileged: true
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/tmp/.Xauthority
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    volumes:
+      - ${PWD}:/ws/src/creating_autonomous_car
+      - ${PWD}/../cache/build:/ws/build
+      - ${PWD}/../cache/install:/ws/install
+      - ${PWD}/../cache/log:/ws/log
+      - ${HOME}/.Xauthority:/tmp/.Xauthority
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    working_dir: /ws
+    stdin_open: true
+    tty: true

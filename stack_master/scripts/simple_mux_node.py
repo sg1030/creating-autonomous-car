@@ -2,194 +2,126 @@
 
 import rclpy
 from rclpy.node import Node
-from rclpy.duration import Duration
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from sensor_msgs.msg import Joy, LaserScan
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Float64
-from sensor_msgs.msg import Joy
 from ackermann_msgs.msg import AckermannDriveStamped
 from copy import deepcopy
+
+from controller.estop import EStop
 
 
 class SimpleMuxNode(Node):
 
     def __init__(self):
-        """
-        Initialize the node, subscribe to topics, create publishers and set up member variables.
-        """
         super().__init__('simple_mux')
 
-        # Declare parameters
-        self.declare_parameter('out_topic', 'low_level/ackermann_cmd_mux/output')
-        self.declare_parameter('in_topic', 'high_level/ackermann_cmd_mux/input/nav_1')
-        self.declare_parameter('joy_topic', '/joy')
-        self.declare_parameter('rate_hz', 50.0)
-        self.declare_parameter('joy_max_speed', 4.0)
-        self.declare_parameter('joy_max_steer', 0.4)
-        self.declare_parameter('joy_freshness_threshold', 1.0)
-        self.declare_parameter('servo_min', 0.15)
-        self.declare_parameter('servo_max', 0.85)
+        self.declare_parameter('out_topic',                      'low_level/ackermann_cmd_mux/output')
+        self.declare_parameter('in_topic',                       'high_level/ackermann_cmd')
+        self.declare_parameter('joy_topic',                      '/joy')
+        self.declare_parameter('scan_topic',                     '/scan')
+        self.declare_parameter('odom_topic',                     '/vesc/odom')
+        self.declare_parameter('rate_hz',                        50.0)
+        self.declare_parameter('joy_max_speed',                  4.0)
+        self.declare_parameter('joy_max_steer',                  0.4)
+        self.declare_parameter('joy_freshness_threshold',        1.0)
+        self.declare_parameter('servo_min',                      0.15)
+        self.declare_parameter('servo_max',                      0.85)
         self.declare_parameter('steering_angle_to_servo_offset', 0.5)
-        self.declare_parameter('steering_angle_to_servo_gain', -1.2135)
+        self.declare_parameter('steering_angle_to_servo_gain',  -1.2135)
+        self.declare_parameter('use_estop',  False)
+        p = lambda name: self.get_parameter(name).value
 
-        # Get parameters
-        self.out_topic = self.get_parameter('out_topic').value
-        self.in_topic = self.get_parameter('in_topic').value
-        self.joy_topic = self.get_parameter('joy_topic').value
-        self.rate_hz = self.get_parameter('rate_hz').value
-        self.max_speed = self.get_parameter('joy_max_speed').value
-        self.max_steer = self.get_parameter('joy_max_steer').value
-        self.joy_freshness_threshold = self.get_parameter('joy_freshness_threshold').value
+        out_topic  = p('out_topic')
+        in_topic   = p('in_topic')
+        joy_topic  = p('joy_topic')
+        scan_topic = p('scan_topic')
+        odom_topic = p('odom_topic')
 
-        servo_min = self.get_parameter('servo_min').value
-        servo_max = self.get_parameter('servo_max').value
-        steering_angle_to_servo_offset = self.get_parameter('steering_angle_to_servo_offset').value
-        steering_angle_to_servo_gain = self.get_parameter('steering_angle_to_servo_gain').value
+        self.use_estop = p('use_estop')
+        self.max_speed               = p('joy_max_speed')
+        self.max_steer               = p('joy_max_steer')
+        self.joy_freshness_threshold = p('joy_freshness_threshold')
 
-        servo_max_rad = (servo_max - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
-        servo_min_rad = (servo_min - steering_angle_to_servo_offset) / steering_angle_to_servo_gain
-
-        self.servo_max_abs = min(abs(servo_max_rad), abs(servo_min_rad))
+        servo_offset = p('steering_angle_to_servo_offset')
+        servo_gain   = p('steering_angle_to_servo_gain')
+        self.servo_max_abs = min(
+            abs((p('servo_max') - servo_offset) / servo_gain),
+            abs((p('servo_min') - servo_offset) / servo_gain),
+        )
+        
 
         self.current_host = None
+        self.human_drive  = None
+        self.autodrive    = None
+        self.scan         = None
+        self.odom         = None
 
-        self.human_drive = None
-        self.autodrive = None
-        self.zero_msg = AckermannDriveStamped()
-        self.zero_msg.header.stamp = self.get_clock().now().to_msg()
-        self.zero_msg.drive.steering_angle = 0.0
-        self.zero_msg.drive.speed = 0.0
-        self.cur_v = 0.0
-        self.prev_del_v = 0.0
-        self.vel_planner = 0.0
+        self.create_subscription(AckermannDriveStamped, in_topic,  self._drive_cb, 10)
+        self.create_subscription(Joy,                   joy_topic, self._joy_cb,   10)
+        if self.use_estop:
+            self.estop = EStop(self)
 
-        # Create subscribers
-        self.create_subscription(
-            AckermannDriveStamped,
-            self.in_topic,
-            self.drive_callback,
-            10
-        )
+            self.create_subscription(LaserScan, scan_topic, self._scan_cb, 10)
+            self.create_subscription(Odometry,  odom_topic, self._odom_cb, 10)
 
-        self.create_subscription(
-            Odometry,
-            '/odom',
-            self.odom_callback,
-            10
-        )
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, out_topic, 10)
+        self.create_timer(1.0 / p('rate_hz'), self._loop)
 
-        self.create_subscription(
-            Float64,
-            '/vel_planner',
-            self.planner_callback,
-            10
-        )
+    def _scan_cb(self, msg): self.scan = msg
+    def _odom_cb(self, msg): self.odom = msg
+    def _drive_cb(self, msg): self.autodrive = msg
 
-        self.create_subscription(
-            Joy,
-            self.joy_topic,
-            self.joy_callback,
-            10
-        )
-
-        # Create publishers
-        self.drive_pub = self.create_publisher(
-            AckermannDriveStamped,
-            self.out_topic,
-            10
-        )
-
-        self.current_pub = self.create_publisher(
-            Float64,
-            '/commands/motor/current',
-            10
-        )
-
-        # Create timer
-        self.timer = self.create_timer(1.0 / self.rate_hz, self.timer_callback)
-
-        self.get_logger().info(f'SimpleMuxNode initialized')
-        self.get_logger().info(f'  Input topic: {self.in_topic}')
-        self.get_logger().info(f'  Output topic: {self.out_topic}')
-        self.get_logger().info(f'  Joy topic: {self.joy_topic}')
-        self.get_logger().info(f'  Max speed: {self.max_speed} m/s')
-        self.get_logger().info(f'  Max steering: {self.max_steer} rad')
-
-    def check_uptodate(self, drive_msg):
-        if drive_msg is None:
+    def _is_fresh(self, msg):
+        if msg is None:
             return False
+        dt = (self.get_clock().now() - rclpy.time.Time.from_msg(msg.header.stamp)).nanoseconds / 1e9
+        return abs(dt) < self.joy_freshness_threshold
 
-        current_time = self.get_clock().now()
-        msg_time = rclpy.time.Time.from_msg(drive_msg.header.stamp)
-        time_diff = (current_time - msg_time).nanoseconds / 1e9
+    def _clip(self, msg):
+        out = deepcopy(msg)
+        out.drive.steering_angle = max(-self.servo_max_abs, min(self.servo_max_abs, out.drive.steering_angle))
+        return out
 
-        if abs(time_diff) < self.joy_freshness_threshold:
-            return True
+    def _loop(self):
+        zero = AckermannDriveStamped()
+        zero.header.stamp = self.get_clock().now().to_msg()
+
+        if self.current_host == 'autodrive' and self._is_fresh(self.autodrive):
+            out = self._clip(self.autodrive)
+        elif self.current_host == 'humandrive' and self._is_fresh(self.human_drive):
+            out = self._clip(self.human_drive)
         else:
-            return False
+            out = zero
 
-    def clip_servo(self, in_drive_msg):
-        drive_msg = deepcopy(in_drive_msg)
+        if self.use_estop:
+            out = self.estop.should_stop(self.scan, self.odom, out)
 
-        if drive_msg.drive.steering_angle > 0 and drive_msg.drive.steering_angle > self.servo_max_abs:
-            drive_msg.drive.steering_angle = self.servo_max_abs
-        elif drive_msg.drive.steering_angle < 0 and drive_msg.drive.steering_angle < -self.servo_max_abs:
-            drive_msg.drive.steering_angle = -self.servo_max_abs
+        self.drive_pub.publish(out)
 
-        return drive_msg
+    def _joy_cb(self, msg):
+        use_human = msg.buttons[4] if len(msg.buttons) > 4 else False
+        use_auto  = msg.buttons[5] if len(msg.buttons) > 5 else False
 
-    def timer_callback(self):
-        if self.current_host is None:
-            return
-
-        if self.current_host == "autodrive" and self.check_uptodate(self.autodrive):
-            drive_msg = self.clip_servo(self.autodrive)
-            drive_msg.drive.steering_angle *= 1.1
-            self.drive_pub.publish(drive_msg)
-
-        elif self.current_host == "humandrive" and self.check_uptodate(self.human_drive):
-            drive_msg = self.clip_servo(self.human_drive)
-            self.drive_pub.publish(drive_msg)
-
-    def planner_callback(self, msg):
-        self.vel_planner = msg.data
-
-    def odom_callback(self, msg):
-        self.cur_v = msg.twist.twist.linear.x
-
-    def joy_callback(self, msg):
-        use_human_drive = msg.buttons[4] if len(msg.buttons) > 4 else False
-        use_controller = msg.buttons[5] if len(msg.buttons) > 5 else False
-
-        if use_human_drive:
-            drive_msg = AckermannDriveStamped()
-            drive_msg.header.stamp = self.get_clock().now().to_msg()
-            drive_msg.drive.steering_angle = msg.axes[3] * self.max_steer if len(msg.axes) > 3 else 0.0
-            drive_msg.drive.speed = msg.axes[1] * self.max_speed if len(msg.axes) > 1 else 0.0
-
-            self.human_drive = drive_msg
-            self.current_host = "humandrive"
-            self.get_logger().info(f'Human drive: speed={drive_msg.drive.speed:.2f}, steer={drive_msg.drive.steering_angle:.2f}')
-
-        elif use_controller:
-            self.current_host = "autodrive"
-            self.get_logger().info('Switched to autodrive mode')
-
-    def drive_callback(self, msg):
-        self.autodrive = msg
+        if use_human:
+            drive = AckermannDriveStamped()
+            drive.header.stamp = self.get_clock().now().to_msg()
+            drive.drive.steering_angle = msg.axes[3] * self.max_steer if len(msg.axes) > 3 else 0.0
+            drive.drive.speed          = msg.axes[1] * self.max_speed  if len(msg.axes) > 1 else 0.0
+            self.human_drive   = drive
+            self.current_host  = 'humandrive'
+        elif use_auto:
+            self.current_host = 'autodrive'
 
 
 def main(args=None):
     rclpy.init(args=args)
-
-    simple_mux = SimpleMuxNode()
-
+    node = SimpleMuxNode()
     try:
-        rclpy.spin(simple_mux)
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        simple_mux.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
 
 
