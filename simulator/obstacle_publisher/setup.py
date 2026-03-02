@@ -29,7 +29,6 @@ setup(
     entry_points={
         'console_scripts': [
             'static_obstacle_manager = obstacle_publisher.static_obstacle_manager:main',
-            'integrated_map_publisher = obstacle_publisher.integrated_map_publisher:main',
             'dynamic_obstacle_publisher = obstacle_publisher.dynamic_obstacle_publisher:main',
         ],
     },
