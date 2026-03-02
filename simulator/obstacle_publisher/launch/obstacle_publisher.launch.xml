@@ -3,6 +3,7 @@
   <!-- Arguments -->
   <arg name="map_name" default="f" description="Map name (will search in stack_master/maps/)"/>
   <arg name="enable_dynamic" default="false" description="Enable dynamic obstacle"/>
+  <arg name="trajectory_csv" default="centerline.csv" description="CSV file name for obstacle trajectory"/>
   <arg name="speed_scaler" default="1.0" description="Speed multiplier for dynamic obstacle"/>
   <arg name="constant_speed" default="false" description="Use constant speed instead of trajectory speed"/>
   <arg name="starting_s" default="0.0" description="Initial position on centerline (meters)"/>
@@ -20,6 +21,7 @@
   <node pkg="obstacle_publisher" exec="dynamic_obstacle_publisher" name="dynamic_obstacle_publisher" output="screen"
         if="$(var enable_dynamic)">
     <param name="map_name" value="$(var map_name)"/>
+    <param name="trajectory_csv" value="$(var trajectory_csv)"/>
     <param name="speed_scaler" value="$(var speed_scaler)"/>
     <param name="constant_speed" value="$(var constant_speed)"/>
     <param name="starting_s" value="$(var starting_s)"/>

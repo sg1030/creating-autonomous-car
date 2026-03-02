@@ -2,8 +2,7 @@
 """
 Dynamic Obstacle State Publisher for F1TENTH Simulator (ROS2)
 
-Publishes dynamic obstacle state (position, heading, size) instead of modifying the map directly.
-The integrated_map_publisher in the simulator will handle map rendering.
+Publishes dynamic obstacle state (position, heading, size) for the F1TENTH simulator.
 """
 
 import rclpy
@@ -18,7 +17,7 @@ _DYNAMIC = ParameterDescriptor(dynamic_typing=True)
 
 
 class DynamicObstaclePublisher(Node):
-    """Publish dynamic obstacle state for integrated map publisher"""
+    """Publish dynamic obstacle state for the F1TENTH simulator"""
 
     def __init__(self):
         super().__init__('dynamic_obstacle_publisher')
@@ -312,7 +311,7 @@ class DynamicObstaclePublisher(Node):
         if x_m is None:
             return
 
-        # Publish state for integrated map publisher
+        # Publish obstacle state
         self.publish_state(x_m, y_m, heading)
 
         # Publish visualization marker
