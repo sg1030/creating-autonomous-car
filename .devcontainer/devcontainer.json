@@ -37,5 +37,5 @@
         "source=${localWorkspaceFolder}/../cache/install,target=/ws/install,type=bind",
         "source=${localWorkspaceFolder}/../cache/log,target=/ws/log,type=bind"
     ],
-    "postCreateCommand": "mkdir -p /ws/build /ws/install /ws/log && sudo chmod 666 /dev/input/event* && cd /ws/src/creating_autonomous_car && bash build_packages_on_local_pc.sh"
+    "postCreateCommand": "mkdir -p /ws/build /ws/install /ws/log && sudo chmod 666 /dev/input/event* /dev/input/js* 2>/dev/null || true && cd /ws/src/creating_autonomous_car && bash build_packages_on_local_pc.sh"
 }
