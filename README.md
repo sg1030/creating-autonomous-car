@@ -28,19 +28,20 @@ cd ~/creating_autonomous_car_ws/src
 git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git
 ```
 
-## 2-A. One-Touch Install -- Local PC (Simulation Only, Recommended)
+> ⚠️ **Complete only the section that applies to you.**
+
+<details open>
+<summary><big><big><b>2-A. For Students — Local PC, Simulation Only (Recommended)</b></big></big></summary>
+
+<br>
 
 ```bash
 ~/creating_autonomous_car_ws/src/creating_autonomous_car/build_packages_on_local_pc.sh
 ```
 
-## 2-B. One-Touch Install -- Car (Full Build)
+After the script finishes, run `source ~/.bashrc` or open a new terminal.
 
-```bash
-~/creating_autonomous_car_ws/src/creating_autonomous_car/build_packages_on_car.sh
-```
-
-Both scripts install all dependencies, build the workspace, and register these aliases in `~/.bashrc`:
+Registered aliases in `~/.bashrc`:
 
 | Alias | Description |
 |-------|-------------|
@@ -49,11 +50,34 @@ Both scripts install all dependencies, build the workspace, and register these a
 | `sb` | Source `~/.bashrc` |
 | `gb` | Edit `~/.bashrc` with gedit |
 
+</details>
+
+<details>
+<summary><big><big><b>2-B. For TAs — Car, Full Build</b></big></big></summary>
+
+<br>
+
+```bash
+~/creating_autonomous_car_ws/src/creating_autonomous_car/build_packages_on_car.sh
+```
+
 After the script finishes, run `source ~/.bashrc` or open a new terminal.
 
-## 2-C. Manual Install (Simulation Only)
+Registered aliases in `~/.bashrc`:
 
-If you prefer installing step by step:
+| Alias | Description |
+|-------|-------------|
+| `cb` | Build workspace (`colcon build --symlink-install`) |
+| `sauce` | Source workspace |
+| `sb` | Source `~/.bashrc` |
+| `gb` | Edit `~/.bashrc` with gedit |
+
+</details>
+
+<details>
+<summary><big><big><b>2-C. Optional — Manual Install, Step by Step (Simulation Only)</b></big></big></summary>
+
+<br>
 
 ```bash
 cd ~/creating_autonomous_car_ws
@@ -98,9 +122,12 @@ echo "alias gb='gedit ~/.bashrc'" >> ~/.bashrc
 > **Note:** By default, car-only packages (sensor drivers, SLAM, particle filter) are excluded via `COLCON_IGNORE`.
 > To build all packages on the car, run `build_packages_on_car.sh` or manually remove the `COLCON_IGNORE` files from `sensor/`, `slam/` directories.
 
----
+</details>
 
-## 2-D. Docker-based Setup (Devcontainer)
+<details>
+<summary><big><big><b>2-D. Not Recommended — Docker-based Setup (Only if Ubuntu 24.04 is not available)</b></big></big></summary>
+
+<br>
 
 This workflow builds and runs the workspace inside a Docker container.
 No local ROS2 installation is needed — only Docker Engine and VS Code.
@@ -191,6 +218,8 @@ VS Code will start the container using the pre-built image, mount the cache
 directories, and automatically run `build_packages_on_local_pc.sh`
 (via `postCreateCommand` in `.devcontainer/devcontainer.json`).
 
+</details>
+
 ---
 
 # USAGE -- SIMULATOR
@@ -201,11 +230,41 @@ directories, and automatically run `build_packages_on_local_pc.sh`
 ros2 launch stack_master low_level.launch.xml sim:=true map:=<map_name>
 ```
 
+### 💡 No custom map? Use the default map `f` in the `maps` folder:
+
+```bash
+ros2 launch stack_master low_level.launch.xml map:=f sim:=true
+```
+
 This launches:
 - F1TENTH gym simulator (`gym_bridge`)
 - Static obstacle manager (interactive markers in RViz)
 - Simple command multiplexer
 - LiDAR is configured to 2160 beams to match the class vehicle setup
+
+## Keyboard Control (Simulator)
+
+To manually drive the car in simulation, use `keyboard_joy_node`.
+It publishes to the `/joy` topic at 50 Hz — the same interface as a physical joystick.
+
+```bash
+ros2 run stack_master keyboard_joy_node.py
+```
+
+Key bindings:
+
+| Key | Action |
+|-----|--------|
+| `↑` | Forward |
+| `↓` | Reverse |
+| `←` | Steer left |
+| `→` | Steer right |
+| `Space` | Stop |
+| `H` | Human drive mode |
+| `A` | Auto drive mode |
+| `Q` / `Ctrl+C` | Quit |
+
+> **Note:** Requires `pynput`. Installed automatically by `build_packages_on_local_pc.sh` and `build_packages_on_car.sh`.
 
 ## Static Obstacles
 
@@ -306,30 +365,6 @@ Depending on the connection method (bluetooth, wired, wireless receiver), the jo
 ```bash
 ros2 run joy joy_node
 ```
-
-### No Joystick? Use Keyboard Instead
-
-If a joystick is not available, use `keyboard_joy_node` as a drop-in replacement.
-It publishes to the same `/joy` topic at 50 Hz, so no other nodes need to change.
-
-```bash
-ros2 run stack_master keyboard_joy_node.py
-```
-
-Key bindings:
-
-| Key | Action |
-|-----|--------|
-| `↑` | Forward |
-| `↓` | Reverse |
-| `←` | Steer left |
-| `→` | Steer right |
-| `Space` | Stop |
-| `H` | Human drive mode |
-| `A` | Auto drive mode |
-| `Q` / `Ctrl+C` | Quit |
-
-> **Note:** Requires `pynput` (`pip install pynput`). The one-touch install scripts (`build_packages_on_car.sh`, `build_packages_on_local_pc.sh`) install it automatically.
 
 ## Cartographer Mapping
 
