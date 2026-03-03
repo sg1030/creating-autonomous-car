@@ -34,6 +34,7 @@ sudo apt install -y \
     python3-pip \
     python3-skimage \
     ros-jazzy-xacro \
+    ros-jazzy-rmw-cyclonedds-cpp \
     gedit
 
 # ============================================================================
@@ -53,6 +54,10 @@ pip install transforms3d --break-system-packages
 # coverage upgrade (fixes numba + system coverage conflict)
 echo "  Upgrading coverage..."
 pip install --upgrade coverage --break-system-packages
+
+# pynput (keyboard/mouse input for teleop)
+echo "  Installing pynput..."
+pip install pynput --break-system-packages
 
 # ============================================================================
 # 3. Initialize rosdep and install ROS dependencies
@@ -106,6 +111,14 @@ else
 fi
 
 # Add aliases (idempotent)
+# Add RMW_IMPLEMENTATION (idempotent)
+if ! grep -qF "RMW_IMPLEMENTATION" "${BASHRC}" 2>/dev/null; then
+    echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> "${BASHRC}"
+    echo "  Added RMW_IMPLEMENTATION to ~/.bashrc"
+else
+    echo "  RMW_IMPLEMENTATION already in ~/.bashrc, skipping."
+fi
+
 ALIASES=(
     "alias cb='cd ${WS_DIR} && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release'"
     "alias sauce='source ${WS_DIR}/install/setup.bash'"

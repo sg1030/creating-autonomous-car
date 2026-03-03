@@ -307,6 +307,30 @@ Depending on the connection method (bluetooth, wired, wireless receiver), the jo
 ros2 run joy joy_node
 ```
 
+### No Joystick? Use Keyboard Instead
+
+If a joystick is not available, use `keyboard_joy_node` as a drop-in replacement.
+It publishes to the same `/joy` topic at 50 Hz, so no other nodes need to change.
+
+```bash
+ros2 run stack_master keyboard_joy_node.py
+```
+
+Key bindings:
+
+| Key | Action |
+|-----|--------|
+| `↑` | Forward |
+| `↓` | Reverse |
+| `←` | Steer left |
+| `→` | Steer right |
+| `Space` | Stop |
+| `H` | Human drive mode |
+| `A` | Auto drive mode |
+| `Q` / `Ctrl+C` | Quit |
+
+> **Note:** Requires `pynput` (`pip install pynput`). The one-touch install scripts (`build_packages_on_car.sh`, `build_packages_on_local_pc.sh`) install it automatically.
+
 ## Cartographer Mapping
 
 Start mapping to create a new map:

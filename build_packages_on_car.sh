@@ -36,6 +36,7 @@ sudo apt install -y \
     python3-numpy \
     cython3 \
     ros-jazzy-xacro \
+    ros-jazzy-rmw-cyclonedds-cpp \
     libboost-dev \
     libboost-iostreams-dev \
     libcairo2-dev \
@@ -106,6 +107,10 @@ pip install transforms3d --break-system-packages
 echo "  Upgrading coverage..."
 pip install --upgrade coverage --break-system-packages
 
+# pynput (keyboard/mouse input for teleop)
+echo "  Installing pynput..."
+pip install pynput --break-system-packages
+
 # ============================================================================
 # 4. Install range_libc (for particle filter localization)
 # ============================================================================
@@ -170,6 +175,14 @@ else
 fi
 
 # Add aliases (idempotent)
+# Add RMW_IMPLEMENTATION (idempotent)
+if ! grep -qF "RMW_IMPLEMENTATION" "${BASHRC}" 2>/dev/null; then
+    echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> "${BASHRC}"
+    echo "  Added RMW_IMPLEMENTATION to ~/.bashrc"
+else
+    echo "  RMW_IMPLEMENTATION already in ~/.bashrc, skipping."
+fi
+
 ALIASES=(
     "alias cb='cd ${WS_DIR} && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release'"
     "alias sauce='source ${WS_DIR}/install/setup.bash'"
