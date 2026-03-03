@@ -42,9 +42,10 @@ USER $USERNAME
 # .bashrc setup
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/$USERNAME/.bashrc \
     && echo "[ -f /ws/install/setup.bash ] && source /ws/install/setup.bash" >> /home/$USERNAME/.bashrc \
-    && echo "export ROS_DOMAIN_ID=42" >> /home/$USERNAME/.bashrc \
+    && echo "export ROS_DOMAIN_ID=1" >> /home/$USERNAME/.bashrc \
     && echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> /home/$USERNAME/.bashrc \
     && echo "alias cb='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release'" >> /home/$USERNAME/.bashrc \
-    && echo "alias sauce='source /ws/install/setup.bash'" >> /home/$USERNAME/.bashrc
+    && echo "alias sauce='source /ws/install/setup.bash'" >> /home/$USERNAME/.bashrc \
+    && echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> /home/$USERNAME/.bashrc
 
 CMD ["/bin/bash"]

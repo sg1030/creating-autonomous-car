@@ -14,7 +14,7 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 ## Prerequisites
 
 - Ubuntu 24.04
-- ROS2 Jazzy
+- ROS2 Jazzy (local install) **or** Docker Engine (container-based install)
 
 ---
 
@@ -97,6 +97,99 @@ echo "alias gb='gedit ~/.bashrc'" >> ~/.bashrc
 
 > **Note:** By default, car-only packages (sensor drivers, SLAM, particle filter) are excluded via `COLCON_IGNORE`.
 > To build all packages on the car, run `build_packages_on_car.sh` or manually remove the `COLCON_IGNORE` files from `sensor/`, `slam/` directories.
+
+---
+
+## 2-D. Docker-based Setup (Devcontainer)
+
+This workflow builds and runs the workspace inside a Docker container.
+No local ROS2 installation is needed — only Docker Engine and VS Code.
+
+### Step 1 — Install Docker Engine
+
+```bash
+# Add Docker's official GPG key
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the Docker repository
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+```
+
+### Step 2 — Add your user to the `docker` group
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+> **Note:** `newgrp docker` applies the group change to the current shell only.
+> For a permanent effect across all terminals, **log out and log back in** (or reboot).
+
+### Step 3 — Verify Docker is working
+
+```bash
+docker ps
+```
+
+Expected output: an empty table with column headers (no permission errors).
+
+### Step 4 — Create the build cache directories
+
+The container mounts host-side directories so that `colcon` build artifacts
+persist across container restarts.
+Create them **before** starting the container:
+
+```bash
+mkdir -p ~/creating_autonomous_car_ws/src/cache/build \
+         ~/creating_autonomous_car_ws/src/cache/install \
+         ~/creating_autonomous_car_ws/src/cache/log
+```
+
+These map to `/ws/build`, `/ws/install`, and `/ws/log` inside the container
+(defined in `docker-compose.yml`).
+
+### Step 5 — Build the Docker image
+
+> **Important:** All Docker commands below must be run from inside the repository directory.
+
+```bash
+cd ~/creating_autonomous_car_ws/src/creating_autonomous_car
+docker compose build dev
+```
+
+This builds the `creating_autonomous_car_ros2:jazzy` image defined in
+`.devcontainer/Dockerfile`.
+
+### Step 6 — Open in VS Code Dev Container
+
+1. Install the **Dev Containers** extension in VS Code (if not already installed).
+2. Navigate to the repository directory and open VS Code from there:
+
+```bash
+cd ~/creating_autonomous_car_ws/src/creating_autonomous_car
+code .
+```
+
+3. Press `Ctrl+Shift+P`, type **"Dev Containers: Reopen in Container"**, and select it.
+
+VS Code will start the container using the pre-built image, mount the cache
+directories, and automatically run `build_packages_on_local_pc.sh`
+(via `postCreateCommand` in `.devcontainer/devcontainer.json`).
 
 ---
 

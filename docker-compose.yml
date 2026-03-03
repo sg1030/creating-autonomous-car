@@ -14,7 +14,7 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
       - XAUTHORITY=/tmp/.Xauthority
-      - ROS_DOMAIN_ID=42
+      - ROS_DOMAIN_ID=1
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
     volumes:
       - ${PWD}:/ws/src/creating_autonomous_car
