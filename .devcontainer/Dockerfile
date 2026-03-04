@@ -2,6 +2,7 @@ FROM osrf/ros:jazzy-desktop
 ARG USERNAME
 ARG UID
 ARG GID
+ARG INPUT_GID=995
 
 ENV SHELL=/bin/bash
 
@@ -12,7 +13,9 @@ RUN groupadd --gid $GID $USERNAME \
     && apt-get update \
     && apt-get install -y sudo \
     && echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && { groupadd --gid $INPUT_GID input 2>/dev/null || true; } \
+    && usermod -aG input $USERNAME
 
 # Base build tools + display libraries
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \

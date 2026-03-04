@@ -7,6 +7,7 @@ services:
         - USERNAME=${USER}
         - UID=${UID:-1000}
         - GID=${GID:-1000}
+        - INPUT_GID=${INPUT_GID:-995}
     image: creating_autonomous_car_ros2:jazzy
     container_name: creating_autonomous_car_dev
     privileged: true
@@ -23,6 +24,7 @@ services:
       - ${PWD}/../cache/log:/ws/log
       - ${HOME}/.Xauthority:/tmp/.Xauthority
       - /tmp/.X11-unix:/tmp/.X11-unix
+      - /dev/input:/dev/input
     working_dir: /ws
     stdin_open: true
     tty: true
