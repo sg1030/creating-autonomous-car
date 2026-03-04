@@ -2,7 +2,7 @@ FROM osrf/ros:jazzy-desktop
 ARG USERNAME
 ARG UID
 ARG GID
-ARG INPUT_GID=995
+ARG INPUT_GID
 
 ENV SHELL=/bin/bash
 

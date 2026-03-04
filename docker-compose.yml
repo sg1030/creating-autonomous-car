@@ -7,6 +7,7 @@ services:
         - USERNAME=${USER}
         - UID=${UID:-1000}
         - GID=${GID:-1000}
+        - INPUT_GID=${INPUT_GID}
     image: creating_autonomous_car_ros2:jazzy
     container_name: creating_autonomous_car_dev
     privileged: true
