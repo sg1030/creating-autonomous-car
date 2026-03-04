@@ -27,12 +27,12 @@
     "runArgs": [
         "--name", "creating_autonomous_car_devcontainer",
         "--net", "host",
-        "--privileged",
-        "--device", "/dev/input"
+        "--privileged"
     ],
     "mounts": [
         "source=${localEnv:XAUTHORITY},target=/tmp/.Xauthority,type=bind,consistency=cached",
         "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+        "source=/dev/input,target=/dev/input,type=bind",
         "source=${localWorkspaceFolder}/../cache/build,target=/ws/build,type=bind",
         "source=${localWorkspaceFolder}/../cache/install,target=/ws/install,type=bind",
         "source=${localWorkspaceFolder}/../cache/log,target=/ws/log,type=bind"

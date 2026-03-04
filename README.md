@@ -26,6 +26,7 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 mkdir -p ~/creating_autonomous_car_ws/src
 cd ~/creating_autonomous_car_ws/src
 git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git
+cd creating_autonomous_car
 ```
 
 > ⚠️ **Complete only the section that applies to you.**
@@ -175,44 +176,24 @@ docker ps
 
 Expected output: an empty table with column headers (no permission errors).
 
-### Step 4 — Create the build cache directories
+### Step 4 — Build the Docker image and open VS Code
 
-The container mounts host-side directories so that `colcon` build artifacts
-persist across container restarts.
-Create them **before** starting the container:
+Run the build script from anywhere:
 
 ```bash
-mkdir -p ~/creating_autonomous_car_ws/src/cache/build \
-         ~/creating_autonomous_car_ws/src/cache/install \
-         ~/creating_autonomous_car_ws/src/cache/log
+~/creating_autonomous_car_ws/src/creating_autonomous_car/build_docker.sh
 ```
 
-These map to `/ws/build`, `/ws/install`, and `/ws/log` inside the container
-(defined in `docker-compose.yml`).
+This script will:
+1. Create the `colcon` cache directories (`cache/build`, `cache/install`, `cache/log`)
+2. Move into the repository directory
+3. Build the `creating_autonomous_car_ros2:jazzy` image (defined in `.devcontainer/Dockerfile`)
+4. Open VS Code in the repository directory
 
-### Step 5 — Build the Docker image
-
-> **Important:** All Docker commands below must be run from inside the repository directory.
-
-```bash
-cd ~/creating_autonomous_car_ws/src/creating_autonomous_car
-docker compose build dev
-```
-
-This builds the `creating_autonomous_car_ros2:jazzy` image defined in
-`.devcontainer/Dockerfile`.
-
-### Step 6 — Open in VS Code Dev Container
+### Step 5 — Open in VS Code Dev Container
 
 1. Install the **Dev Containers** extension in VS Code (if not already installed).
-2. Navigate to the repository directory and open VS Code from there:
-
-```bash
-cd ~/creating_autonomous_car_ws/src/creating_autonomous_car
-code .
-```
-
-3. Press `Ctrl+Shift+P`, type **"Dev Containers: Reopen in Container"**, and select it.
+2. Press `Ctrl+Shift+P`, type **"Dev Containers: Reopen in Container"**, and select it.
 
 VS Code will start the container using the pre-built image, mount the cache
 directories, and automatically run `build_packages_on_local_pc.sh`
