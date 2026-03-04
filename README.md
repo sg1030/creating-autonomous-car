@@ -26,6 +26,7 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 mkdir -p ~/creating_autonomous_car_ws/src
 cd ~/creating_autonomous_car_ws/src
 git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git
+cd creating_autonomous_car
 ```
 
 > ⚠️ **Complete only the section that applies to you.**
