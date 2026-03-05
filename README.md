@@ -23,6 +23,7 @@ ROS2 Jazzy workspace for autonomous vehicle development.
 ## 1. Clone Repository
 
 ```bash
+sudo apt update && sudo apt install -y git
 mkdir -p ~/creating_autonomous_car_ws/src
 cd ~/creating_autonomous_car_ws/src
 git clone https://github.com/HMCL-UNIST/creating_autonomous_car.git

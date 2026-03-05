@@ -140,6 +140,25 @@ rosdep update
 
 rosdep install --from-paths "${WS_DIR}/src" --ignore-src -r -y
 
+# Check for missing dependencies and retry via apt
+echo "  Checking for remaining missing dependencies..."
+MISSING=$(rosdep check --from-paths "${WS_DIR}/src" --ignore-src 2>&1 \
+    | grep "apt\b" | sed 's/.*apt\t//;s/^ *//' | sort -u | tr '\n' ' ')
+
+if [ -n "${MISSING}" ]; then
+    echo "  Missing packages found: ${MISSING}"
+    echo "  Retrying installation via apt..."
+    sudo apt install -y ${MISSING} || echo "  Warning: some packages could not be installed."
+else
+    echo "  All dependencies are satisfied."
+fi
+
+# Ensure colcon is installed
+if ! command -v colcon &> /dev/null; then
+    echo "  colcon not found, installing..."
+    sudo apt install -y python3-colcon-common-extensions
+fi
+
 # ============================================================================
 # 6. Build workspace
 # ============================================================================
@@ -174,13 +193,30 @@ else
     echo "  Source line already in ~/.bashrc, skipping."
 fi
 
-# Add aliases (idempotent)
+# Increase socket buffer limits for CycloneDDS (idempotent)
+if ! grep -q "net.core.rmem_max=26214400" /etc/sysctl.conf 2>/dev/null; then
+    echo "net.core.rmem_max=26214400" | sudo tee -a /etc/sysctl.conf
+    echo "net.core.wmem_max=26214400" | sudo tee -a /etc/sysctl.conf
+    sudo sysctl -p
+    echo "  Added socket buffer settings to /etc/sysctl.conf"
+else
+    echo "  Socket buffer settings already configured, skipping."
+fi
+
 # Add RMW_IMPLEMENTATION (idempotent)
 if ! grep -qF "RMW_IMPLEMENTATION" "${BASHRC}" 2>/dev/null; then
     echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> "${BASHRC}"
     echo "  Added RMW_IMPLEMENTATION to ~/.bashrc"
 else
     echo "  RMW_IMPLEMENTATION already in ~/.bashrc, skipping."
+fi
+
+# Add CYCLONEDDS_URI (commented out by default - uncomment and edit cyclonedds.xml to use)
+if ! grep -qF "CYCLONE_DDS_URI" "${BASHRC}" 2>/dev/null; then
+    echo '# export CYCLONE_DDS_URI=file://$HOME/creating_autonomous_car_ws/src/creating_autonomous_car/cyclonedds.xml' >> "${BASHRC}"
+    echo "  Added CYCLONE_DDS_URI (commented) to ~/.bashrc"
+else
+    echo "  CYCLONE_DDS_URI already in ~/.bashrc, skipping."
 fi
 
 ALIASES=(
