@@ -143,7 +143,7 @@ rosdep install --from-paths "${WS_DIR}/src" --ignore-src -r -y
 # Check for missing dependencies and retry via apt
 echo "  Checking for remaining missing dependencies..."
 MISSING=$(rosdep check --from-paths "${WS_DIR}/src" --ignore-src 2>&1 \
-    | grep "apt\b" | sed 's/.*apt\t//;s/^ *//' | sort -u | tr '\n' ' ')
+    | grep "apt\b" | sed 's/.*apt\t//;s/^ *//' | sort -u | tr '\n' ' ' || true)
 
 if [ -n "${MISSING}" ]; then
     echo "  Missing packages found: ${MISSING}"
@@ -213,7 +213,7 @@ fi
 
 # Add CYCLONEDDS_URI (commented out by default - uncomment and edit cyclonedds.xml to use)
 if ! grep -qF "CYCLONE_DDS_URI" "${BASHRC}" 2>/dev/null; then
-    echo '# export CYCLONE_DDS_URI=file://$HOME/creating_autonomous_car_ws/src/creating_autonomous_car/cyclonedds.xml' >> "${BASHRC}"
+    echo "# export CYCLONE_DDS_URI=file://${SCRIPT_DIR}/cyclonedds.xml" >> "${BASHRC}"
     echo "  Added CYCLONE_DDS_URI (commented) to ~/.bashrc"
 else
     echo "  CYCLONE_DDS_URI already in ~/.bashrc, skipping."

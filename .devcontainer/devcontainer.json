@@ -25,7 +25,7 @@
         "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
     },
     "runArgs": [
-        "--name", "creating_autonomous_car_devcontainer",
+        "--name", "creating_autonomous_car",
         "--net", "host",
         "--privileged"
     ],
