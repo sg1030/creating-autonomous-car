@@ -1,0 +1,23 @@
+pp:
+  ros__parameters:
+    control_rate_hz:  50.0
+    estop_min_dist:   0.5     # [m]
+    estop_angle_deg: 30.0     # [deg]
+    pp_wheelbase:     0.33    # [m]
+    pp_max_steer:     0.4     # [rad]
+
+    # ── Adaptive L1 lookahead ──────────────────────────────────────────
+    # L = clip(lookahead_k * v,  [max(pp_lookahead, √2·|lateral_err|),  pp_t_clip_max])
+    pp_lookahead:    0.3      # [m]   absolute minimum lookahead
+    pp_t_clip_max:   3.0      # [m]   absolute maximum lookahead
+    lookahead_k:     0.45      # [s]   speed coefficient
+
+    # ── Speed ─────────────────────────────────────────────────────────
+    speed_lookahead: 0.2      # [s]   time horizon for target speed lookup
+    lat_err_coeff:   0.5      # [0–1] lateral-error speed penalty (0=off, 1=max)
+
+    # ── Steering ──────────────────────────────────────────────────────
+    steer_spd_start: 3.0      # [m/s] speed where steer downscaling starts
+    steer_spd_end:   6.0      # [m/s] speed where downscaling saturates
+    steer_downscale: 0.3      # [0–1] steer fraction removed at steer_spd_end
+    steer_rate_limit: 0.4     # [rad] max |Δsteer| per control step

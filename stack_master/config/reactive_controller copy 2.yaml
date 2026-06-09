@@ -1,0 +1,55 @@
+gap_follow:
+  ros__parameters:
+    control_rate_hz:  50.0
+    estop_min_dist:   0.0    # [m]
+    estop_angle_deg:  0.0    # [deg]
+    # ── Scan Centerline + Pure Pursuit ─────────────────────────────────────
+    pp_lookahead:           1.5    # [m]   lookahead 기본 거리
+    pp_lookahead_min:       1.0    # [m]   lookahead 최솟값 (저속 시)
+    pp_lookahead_speed_k:   0.25   # [s]   ld = k·v + min
+    pp_wheelbase:           0.33   # [m]   축거
+    pp_max_steer:           0.4    # [rad] 조향 한계
+    pp_steer_alpha:         0.6    # [-]   EMA 필터 가중치
+    pp_n_samples:           30     # [-]   대칭 각도쌍 샘플 수
+    pp_angle_start_deg:     5.0    # [deg] 첫 샘플 각도 (노이즈 방지)
+    # ── Disparity-Extender fallback ────────────────────────────────────────
+    gf_estop_enable:         false  # true: EStop active / false: bypass EStop
+    gf_speed:                3.0    # [m/s]  target cruise speed
+    gf_max_steer:            0.4    # [rad]  hardware steering limit
+    gf_max_range:            6.0    # [m]    clip far readings to this
+    gf_fov_deg:             120.0    # [deg]  half-angle of forward FOV
+    gf_steer_kp:             0.5    # [-]    proportional gain: steer = kp * resultant_angle
+    gf_steer_deadband_deg:   3.0    # [deg]  goal_angle below this → 0
+    gf_steer_alpha:          0.8    # [-]    EMA weight, no-obstacle path
+    gf_obstacle_steer_alpha: 0.9    # [-]    EMA weight, obstacle path
+    gf_obstacle_threshold:   2.0    # [m]    distance to trigger sector blanking
+    gf_blank_half_angle_deg: 10.0   # [deg]  half-width of blanked sector
+    gf_obstacle_speed_k:     0.6    # [-]    speed multiplier at obstacle
+    gf_min_speed:            0.5    # [m/s]  speed floor
+    gf_speed_decay_k:        0.6    # [-]    speed-reduction coefficient
+    # ── Local A* + Direct Steering ────────────────────────────────────────
+    la_grid_size:         6.0   # [m]   total grid width/height
+    la_resolution:        0.10  # [m/cell]
+    la_inflation_r:       0.28  # [m]   obstacle inflation radius
+    la_max_range:         6.0   # [m]   LiDAR clip distance
+    la_fov_deg:          90.0   # [deg] half-angle forward FOV
+    la_speed:             4.0   # [m/s] cruise speed
+    la_min_speed:         0.8   # [m/s] speed floor
+    la_speed_decay_k:     0.55  # [-]   speed-reduction coefficient
+    la_max_steer:         0.4   # [rad]
+    la_steer_kp:          1.0   # [-]   goal 방향 비례 조향 이득
+    la_inflation_penalty: 1.0   # [-]   extra g-cost per inflated cell
+    la_goal_dist:         2.5   # [m]   goal 행 거리 (작을수록 A* 빠름)
+    disp_threshold:       0.15  # [m]   disparity jump threshold (fallback)
+
+wall_follow:
+  ros__parameters:
+    control_rate_hz:  50.0
+    gf_estop_enable:  false   # true: EStop active / false: bypass EStop
+    gf_speed:         4.0    # [m/s]  target cruise speed
+    gf_max_steer:     0.4    # [rad]  hardware steering limit
+    gf_max_range:     6.0    # [m]    clip far readings to this
+    gf_fov_deg:       60.0   # [deg]  half-angle of forward FOV
+    gf_steer_kp:      1.0    # [-]    proportional gain
+    gf_min_speed:     0.5    # [m/s]  speed floor
+    gf_speed_decay_k: 0.6    # [-]    speed-reduction coefficient

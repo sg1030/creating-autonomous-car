@@ -26,6 +26,7 @@ setup(
             'centerline_extractor = planner.centerline_extractor:main',
             'trajectory_optimizer = planner.trajectory_optimizer:main',
             'waypoint_publisher = planner.waypoint_publisher:main',
+            'mpc_local_planner = planner.mpc_local_planner:main',
         ],
     },
 )

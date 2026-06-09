@@ -1,0 +1,68 @@
+mpc_local_planner:
+  ros__parameters:
+
+    # ── Topics ──────────────────────────────────────────────────────────────────
+    scan_topic:   /scan
+    odom_topic:   /vesc/odom        # real car: /car_state/odom
+    global_topic: /global_waypoints
+    local_topic:  /local_waypoints
+
+    track_half_w:  0.8    # [m]  fallback half-width when CSV lacks dl/dr columns
+
+    # ── MPC horizon ─────────────────────────────────────────────────────────────
+    mpc_N:  10           # [-]  number of prediction steps
+    mpc_dt: 0.1          # [s]  time step  (horizon = N × dt = 1.0 s)
+    mpc_L:  0.33          # [m]  wheelbase
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # COST WEIGHTS  —  the main tuning knobs
+    # ══════════════════════════════════════════════════════════════════════════════
+    #
+    #  STATE TRACKING  (penalises deviation from the reference line)
+    #  ┌─────────────┬──────────────────────────────────────────────────────────┐
+    #  │  Q_ey       │  lateral error  ey  [m]                                  │
+    #  │             │  ↑ = hugs centre-line harder, may oscillate on tight turns│
+    #  │  Q_epsi     │  heading error  ψ - ψ_ref  [rad]                         │
+    #  │             │  ↑ = car aligns faster; too high → oscillation           │
+    #  │  Q_v        │  speed tracking  v - v_ref  [m/s]                        │
+    #  │             │  ↑ = follows speed profile more tightly                  │
+    #  └─────────────┴──────────────────────────────────────────────────────────┘
+    Q_ey:   15.0
+    Q_epsi:  0.0
+    Q_v:     1.0
+
+    #  INPUT PENALTIES  (smoothness / effort)
+    #  ┌─────────────┬──────────────────────────────────────────────────────────┐
+    #  │  R_a        │  acceleration command  a  [m/s²]                         │
+    #  │             │  ↑ = smoother throttle, slower response                  │
+    #  │  R_d        │  steering angle  δ  [rad]                                │
+    #  │             │  ↑ = less aggressive steering, smoother path             │
+    #  └─────────────┴──────────────────────────────────────────────────────────┘
+    R_a:  0.3
+    R_d:  0.3
+
+    #  TRACK BOUNDARY SOFT PENALTY  (soft wall cost)
+    #  ┌─────────────┬──────────────────────────────────────────────────────────┐
+    #  │  Q_ts       │  quadratic penalty when |ey| > hw - CAR_W/2             │
+    #  │             │  ↑ = stronger repulsion from walls                       │
+    #  │             │  set 0 to disable (pure hard constraint only)            │
+    #  └─────────────┴──────────────────────────────────────────────────────────┘
+    Q_ts: 50.0
+
+    #  OBSTACLE AVOIDANCE SLACK  (soft ellipse constraint)
+    #  ┌─────────────┬──────────────────────────────────────────────────────────┐
+    #  │  Q_slack    │  quadratic slack penalty  (s²)                           │
+    #  │             │  ↑ = harder to penetrate obstacle ellipse                │
+    #  │  L_slack    │  linear slack penalty  (s)                               │
+    #  │             │  ↑ = prevents solver exploiting small slack for free     │
+    #  └─────────────┴──────────────────────────────────────────────────────────┘
+    Q_slack: 800.0
+    L_slack: 200.0
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # HARD CONSTRAINTS  —  physical / safety limits
+    # ══════════════════════════════════════════════════════════════════════════════
+    v_max:      6.0   # [m/s]   maximum speed  (hard upper bound on v)
+    a_min:     -2.0   # [m/s²]  maximum braking deceleration
+    a_max:      2.0   # [m/s²]  maximum acceleration
+    delta_max:  0.4   # [rad]   maximum steering angle  (~23 °)

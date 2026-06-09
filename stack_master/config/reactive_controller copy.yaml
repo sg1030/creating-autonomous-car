@@ -1,0 +1,44 @@
+gap_follow:
+  ros__parameters:
+    control_rate_hz:  50.0
+    estop_min_dist:   0.0    # [m]
+    estop_angle_deg: 0.0    # [deg]
+    gf_estop_enable: false   # true: EStop active / false: bypass EStop
+    gf_speed:         5.0    # [m/s]  target cruise speed
+    gf_max_steer:     0.4    # [rad]  hardware steering limit
+    gf_max_range:     6.0    # [m]    clip far readings to this
+    gf_fov_deg:      60.0  # [deg]  half-angle of forward FOV; rear beams excluded
+    gf_steer_kp:           0.5  # [-]   proportional gain: steer = kp * resultant_angle
+    gf_steer_deadband_deg: 3.0  # [deg] goal_angle below this → 0 (kills straight oscillation)
+    gf_steer_alpha:          0.8  # [-]   EMA weight, no-obstacle path (0=frozen, 1=raw)
+    gf_obstacle_steer_alpha: 0.9  # [-]   EMA weight, obstacle path (near-1 = instant response)
+    gf_obstacle_threshold:   1.0  # [m]   distance to trigger sector blanking
+    gf_blank_half_angle_deg: 10.0 # [deg] half-width of blanked sector around obstacle
+    gf_obstacle_speed_k:     0.6  # [-]   speed multiplier at obstacle (0=stop, 1=no effect)
+    gf_min_speed:     0.5  # [m/s] speed floor — never slower than this
+    gf_speed_decay_k: 0.6  # [-]   speed-reduction coefficient (0=constant, 1=zero at max steer)
+
+wall_follow:
+  ros__parameters:
+    control_rate_hz:  50.0
+    estop_min_dist:   0.69    # [m]
+    estop_angle_deg: 30.0    # [deg]
+    wf_target_dist:   0.7    # desired gap from right wall [m]
+    wf_kp:            1.15   # Changed 1.25 to 1.2
+    wf_kd:            0.03 # Changed 0.1 to 0.001
+    wf_ki:            0.0001
+    wf_speed:         3.0   # [m/s]
+    wf_max_steer:     0.4    # [rad]
+    wf_lookahead:     0.6  # [m]
+# wall_follow:
+#   ros__parameters:
+#     control_rate_hz:  50.0
+#     estop_min_dist:   0.5    # [m]
+#     estop_angle_deg: 30.0    # [deg]
+#     wf_target_dist:   0.8    # desired gap from right wall [m]
+#     wf_kp:            1.0
+#     wf_kd:            0.001 #0.1
+#     wf_ki:            0.0001
+#     wf_speed:         2.0    # [m/s]
+#     wf_max_steer:     0.4    # [rad]
+#     wf_lookahead:     1.5    # [m]

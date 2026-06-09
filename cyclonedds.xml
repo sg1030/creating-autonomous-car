@@ -2,8 +2,11 @@
 <CycloneDDS xmlns="https://cdds.io/config">
     <Domain id="any">
         <General>
-            <Interfaces>
-                <NetworkInterface name="wlp~~~" multicast="false"/> <!-- Insert Wi-Fi interface -->
+            <!-- <Interfaces>
+                <NetworkInterface name="wlp87s0f0" multicast="false"/> 
+            </Interfaces> -->
+             <Interfaces>
+                <NetworkInterface address="192.168.60.0" multicast="false"/>
             </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>
@@ -11,7 +14,15 @@
             <ParticipantIndex>auto</ParticipantIndex>
             <Peers>
                 <Peer address="localhost"/>
-                <Peer address="192.168.~~.~~"/> <!-- Insert PEER IP Address -->
+                <Peer address="192.168.60.233"/>
+                <!-- Kim Jeongbin -->
+                <Peer address="192.168.60.52"/>
+                <!-- Choi Wonmin -->
+                <Peer address="192.168.60.99"/>
+                <!-- Lee GwanUk -->
+                <Peer address="192.168.60.70"/>
+                <!-- Kim Sungyun -->
+                <Peer address="192.168.60.245"/>
             </Peers>
         </Discovery>
         <Internal>

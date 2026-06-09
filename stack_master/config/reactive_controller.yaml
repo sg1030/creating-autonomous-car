@@ -1,21 +1,76 @@
 gap_follow:
   ros__parameters:
     control_rate_hz:  50.0
-    estop_min_dist:   0.5    # [m]
+    estop_min_dist:   0.69    # [m]
     estop_angle_deg: 30.0    # [deg]
-    gf_bubble_radius: 0.3    # [m]
-    gf_speed:         2.0    # [m/s]
+    gf_bubble_radius: 0.4    # [m]
+    gf_speed:         1.0    # [m/s]
     gf_max_steer:     0.4    # [rad]
-    gf_max_range:    10.0    # [m]
+    gf_max_range:    4.0    # [m]
+    gf_centering_gain: 0.4  # 0: commit to opening longer, 1: center sooner in wide gaps
+    gf_heading_smoothing: 0.65  # keep target direction from flipping suddenly around a barrier
+    gf_side_bias: 0.4    # prefer staying with the currently chosen side of a corner
+    gf_straight_steer_gain: 0.4  # >1.0 reacts more in straights, <1.0 softens straight tracking
+    gf_corner_steer_gain: 1.5  # >1.0 turns more aggressively in corners, <1.0 turns more softly
+    gf_fov_deg:           75.0  # [deg] half-angle of forward FOV (±30° = 60° total)
 
 wall_follow:
   ros__parameters:
     control_rate_hz:  50.0
-    estop_min_dist:   0.5    # [m]
-    estop_angle_deg: 30.0    # [deg]
-    wf_target_dist:   0.8    # desired gap from right wall [m]
-    wf_kp:            1.0
-    wf_kd:            0.1
-    wf_speed:         1.5    # [m/s]
-    wf_max_steer:     0.4    # [rad]
-    wf_lookahead:     0.5    # [m]
+    gf_estop_enable:  false   # true: EStop active / false: bypass EStop
+    gf_speed:         4.0    # [m/s]  target cruise speed
+    gf_max_steer:     0.4    # [rad]  hardware steering limit
+    gf_max_range:     8.0    # [m]    clip far readings to this
+    gf_fov_deg:       90.0   # [deg]  half-angle of forward FOV
+    gf_steer_kp:      0.9    # [-]    proportional gain
+    gf_steer_ki:      0.0    # [-]    integral gain
+    gf_steer_kd:      0.0    # [-]    derivative gain
+    gf_min_speed:     0.3    # [m/s]  speed floor
+    gf_speed_decay_k: 0.9    # [-]    speed-reduction coefficient
+
+# gap_follow:
+#   ros__parameters:
+#     control_rate_hz:  50.0
+#     estop_min_dist:   0.69    # [m]
+#     estop_angle_deg: 30.0    # [deg]
+#     gf_bubble_radius: 0.4    # [m]
+#     gf_speed:         2.0    # [m/s]
+#     gf_max_steer:     0.4    # [rad]
+#     gf_max_range:    5.0    # [m]
+#     gf_centering_gain: 0.6   # 0: commit to opening longer, 1: center sooner in wide gaps
+#     gf_heading_smoothing: 0.65  # keep target direction from flipping suddenly around a barrier
+#     gf_side_bias: 0.4    # prefer staying with the currently chosen side of a corner
+#     gf_straight_steer_gain: 0.4  # >1.0 reacts more in straights, <1.0 softens straight tracking
+#     gf_corner_steer_gain: 0.5  # >1.0 turns more aggressively in corners, <1.0 turns more softly
+#     gf_fov_deg:           45.0  # [deg] half-angle of forward FOV (±30° = 60° total)
+
+
+# gap_follow:
+#   ros__parameters:
+#     control_rate_hz:  50.0
+#     estop_min_dist:   0.69    # [m]
+#     estop_angle_deg: 30.0    # [deg]
+#     gf_bubble_radius: 0.4    # [m]
+#     gf_speed:         2.0    # [m/s]
+#     gf_max_steer:     0.4    # [rad]
+#     gf_max_range:    7.0    # [m]
+#     gf_centering_gain: 0.6   # 0: commit to opening longer, 1: center sooner in wide gaps
+#     gf_heading_smoothing: 0.65  # keep target direction from flipping suddenly around a barrier
+#     gf_side_bias: 0.4    # prefer staying with the currently chosen side of a corner
+#     gf_straight_steer_gain: 0.4  # >1.0 reacts more in straights, <1.0 softens straight tracking
+#     gf_corner_steer_gain: 0.5  # >1.0 turns more aggressively in corners, <1.0 turns more softly
+#     gf_fov_deg:           45.0  # [deg] half-angle of forward FOV (±30° = 60° total)
+
+# wall_follow:
+#   ros__parameters:
+#     control_rate_hz:  50.0
+#     gf_estop_enable:  false   # true: EStop active / false: bypass EStop
+#     gf_speed:         4.0    # [m/s]  target cruise speed
+#     gf_max_steer:     0.4    # [rad]  hardware steering limit
+#     gf_max_range:     8.0    # [m]    clip far readings to this
+#     gf_fov_deg:       90.0   # [deg]  half-angle of forward FOV
+#     gf_steer_kp:      0.9    # [-]    proportional gain
+#     gf_steer_ki:      0.0    # [-]    integral gain
+#     gf_steer_kd:      0.0    # [-]    derivative gain
+#     gf_min_speed:     0.5    # [m/s]  speed floor
+#     gf_speed_decay_k: 0.9    # [-]    speed-reduction coefficient
