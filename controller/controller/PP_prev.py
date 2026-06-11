@@ -1,32 +1,3 @@
-#!/usr/bin/env python3
-"""
-PP_L1.py  —  L1-guidance Pure Pursuit controller
-
-Improvements over basic PP.py (inspired by PP_Controller.py / ForzaETH stack):
-
-  1. Adaptive L1 lookahead with lateral-error floor
-       L = clip(k·v,  [max(L_min, √2·|d|),  L_max])
-       When the car drifts off the path, the lookahead floor grows so PP
-       steers back more aggressively.
-
-  2. Separate speed lookahead
-       Target speed is read from the waypoint nearest to the position
-       propagated (speed_lookahead seconds) ahead, not from the steering
-       target.  Gives smoother, more anticipatory speed commands.
-
-  3. Lateral-error speed reduction
-       In corners, speed is reduced proportionally to lateral offset and
-       path curvature: v *= (1 - k + k·exp(-lat_e_norm · curv_norm))
-
-  4. High-speed steer downscaling
-       Steer gain is linearly reduced from steer_spd_start to steer_spd_end
-       to prevent over-steering at speed.
-
-  5. Steer rate limiting
-       Steering angle change per control step is bounded to steer_rate_limit
-       to eliminate sudden jumps.
-"""
-
 import math
 import numpy as np
 import rclpy
@@ -34,29 +5,20 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
+<<<<<<< HEAD
 from std_msgs.msg import Float32
 from visualization_msgs.msg import Marker
+=======
+>>>>>>> parent of c350fdc (Initial Commit from HMCL)
 from f110_msgs.msg import WpntArray
+
+from controller.estop import EStop
 
 PARAMS = {
     'control_rate_hz': 50.0,
-    'pp_wheelbase':    0.33,    # [m]
-    'pp_max_steer':    0.4,     # [rad]
-
-    # ── Adaptive L1 lookahead ──────────────────────────────────────────
-    'pp_lookahead':    0.5,     # [m]   absolute minimum lookahead
-    'pp_t_clip_max':   3.0,     # [m]   absolute maximum lookahead
-    'lookahead_k':     0.4,     # [s]   L = k·v  (before clamping)
-
-    # ── Speed ─────────────────────────────────────────────────────────
-    'speed_lookahead': 0.2,     # [s]   propagate position by this to read speed
-    'lat_err_coeff':   0.5,     # [0–1] lateral-error speed penalty strength
-
-    # ── Steering ──────────────────────────────────────────────────────
-    'steer_spd_start': 3.0,     # [m/s] speed at which steer downscaling begins
-    'steer_spd_end':   6.0,     # [m/s] speed at which downscaling saturates
-    'steer_downscale': 0.3,     # [0–1] fraction to remove at steer_spd_end
-    'steer_rate_limit': 0.4,    # [rad] max |Δsteer| per control step
+    'pp_lookahead':     1.0,
+    'pp_wheelbase':    0.33,
+    'pp_max_steer':     0.4,
 }
 
 
@@ -69,28 +31,28 @@ class PPNode(Node):
             self.declare_parameter(name, default)
         p = lambda name: self.get_parameter(name).value
 
-        self.wheelbase       = p('pp_wheelbase')
-        self.max_steer       = p('pp_max_steer')
-        self.lookahead_min   = p('pp_lookahead')
-        self.lookahead_max   = p('pp_t_clip_max')
-        self.lookahead_k     = p('lookahead_k')
-        self.speed_la        = p('speed_lookahead')
-        self.lat_err_coeff   = p('lat_err_coeff')
-        self.steer_spd_start = p('steer_spd_start')
-        self.steer_spd_end   = p('steer_spd_end')
-        self.steer_downscale = p('steer_downscale')
-        self.steer_rate_lim  = p('steer_rate_limit')
+        self.estop     = EStop(self)
+        self.lookahead = p('pp_lookahead')
+        self.wheelbase = p('pp_wheelbase')
+        self.max_steer = p('pp_max_steer')
 
+<<<<<<< HEAD
         self.odom       = None
         self.waypoints  = []
         self._prev_steer = 0.0
         self._lookahead_cap = self.lookahead_max   # overridden by MPC planner topic
+=======
+        self.scan      = None
+        self.odom      = None
+        self.waypoints = []
+>>>>>>> parent of c350fdc (Initial Commit from HMCL)
 
         latched = QoSProfile(
             depth=1,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
+<<<<<<< HEAD
         self.create_subscription(Odometry,  '/vesc/odom',       self._odom_cb, 10)
         self.create_subscription(WpntArray, '/local_waypoints', self._wp_cb, latched)
         self.create_subscription(Float32, '/mpc_planner/lookahead_cap',
@@ -100,28 +62,40 @@ class PPNode(Node):
         self.lookahead_pub = self.create_publisher(Marker, '/pp/lookahead', 10)
         self.create_timer(1.0 / p('control_rate_hz'), self._loop)
         self.get_logger().info('PP_L1Node ready')
+=======
+>>>>>>> parent of c350fdc (Initial Commit from HMCL)
 
-    # ──────────────────────────────────────────────────────────────────
-    # ROS callbacks
-    # ──────────────────────────────────────────────────────────────────
+        from sensor_msgs.msg import LaserScan
+        self.create_subscription(LaserScan,  '/scan',             self._scan_cb, 10)
+        self.create_subscription(Odometry,   '/vesc/odom',        self._odom_cb, 10)
+        self.create_subscription(WpntArray,  '/global_waypoints', self._wp_cb, latched)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, '/vesc/high_level/ackermann_cmd', 10)
+        self.create_timer(1.0 / p('control_rate_hz'), self._loop)
+
+        self.get_logger().info('PPNode ready')
+
+    def _scan_cb(self, msg): self.scan = msg
     def _odom_cb(self, msg): self.odom = msg
-    def _wp_cb(self,  msg): self.waypoints = msg.wpnts
+    def _wp_cb(self, msg):   self.waypoints = msg.wpnts
 
     def _loop(self):
         if self.odom is None or not self.waypoints:
             return
-        steer, speed = self._compute()
+
+        if self.scan is not None and self.estop.is_stop_required(self.scan, self.odom):
+            steer, speed = 0.0, 0.0
+        else:
+            steer, speed = self._compute()
+
         msg = AckermannDriveStamped()
-        msg.header.stamp    = self.get_clock().now().to_msg()
+        msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'base_link'
         msg.drive.steering_angle = steer
-        msg.drive.speed          = speed
+        msg.drive.speed = speed
         self.drive_pub.publish(msg)
 
-    # ──────────────────────────────────────────────────────────────────
-    # Main compute
-    # ──────────────────────────────────────────────────────────────────
     def _compute(self):
+<<<<<<< HEAD
         # ── Step 1: ego pose ──────────────────────────────────────────
         pos = self.odom.pose.pose.position
         q   = self.odom.pose.pose.orientation
@@ -256,6 +230,12 @@ class PPNode(Node):
         m.scale.x = m.scale.y = m.scale.z = 0.25
         m.color.r, m.color.g, m.color.b, m.color.a = 0.1, 1.0, 0.2, 1.0
         self.lookahead_pub.publish(m)
+=======
+        # TODO: Pure Pursuit algorithm
+        # inputs : self.odom, self.waypoints, self.lookahead, self.wheelbase
+        # output : (steering [rad], speed [m/s])
+        return 0.0, 0.0
+>>>>>>> parent of c350fdc (Initial Commit from HMCL)
 
 
 def main(args=None):
