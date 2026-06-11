@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import CubicSpline
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -39,6 +40,23 @@ CtrlPt = Tuple[float, float]   # (arc_length, value)
 def arc_length(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     d = np.sqrt(np.diff(x) ** 2 + np.diff(y) ** 2)
     return np.concatenate([[0.0], np.cumsum(d)])
+
+
+def sample_ctrl_pts(s: np.ndarray, vals: np.ndarray, n: int) -> List[CtrlPt]:
+    """Sample n control points: uniform grid + local extrema of vals."""
+    from scipy.signal import find_peaks
+
+    # uniform backbone
+    s_uniform = np.linspace(s[0], s[-1], n)
+
+    # local maxima and minima (capture corners / straights)
+    peaks,   _ = find_peaks( vals, distance=4)
+    valleys, _ = find_peaks(-vals, distance=4)
+    s_extrema = np.concatenate([s[peaks], s[valleys]])
+
+    s_all = np.unique(np.concatenate([s_uniform, s_extrema]))
+    v_all = np.interp(s_all, s, vals)
+    return [(float(s_all[i]), float(v_all[i])) for i in range(len(s_all))]
 
 
 def spline_interp(ctrl: List[CtrlPt], s_query: np.ndarray) -> np.ndarray:
@@ -74,7 +92,8 @@ class ProfileEditor:
                  title: str,
                  ylabel: str,
                  ylim: Tuple[float, float],
-                 original: Optional[np.ndarray] = None):
+                 original: Optional[np.ndarray] = None,
+                 n_init: int = 2):
         self.s         = s
         self.init_vals = init_vals.copy()
         self.ax        = ax
@@ -84,13 +103,19 @@ class ProfileEditor:
         self.ylim      = ylim
         self.original  = original
         self.active    = False
+        self.n_init    = n_init
 
-        self._ctrl: List[CtrlPt] = [(float(s[0]),  float(init_vals[0])),
-                                     (float(s[-1]), float(init_vals[-1]))]
+        self._ctrl: List[CtrlPt] = self._make_init_ctrl(init_vals)
         self._drag_idx: Optional[int] = None
         self._cached   = init_vals.copy()
 
     # ── public ────────────────────────────────────────────────────────────────
+
+    def _make_init_ctrl(self, vals: np.ndarray) -> List[CtrlPt]:
+        if self.n_init > 2:
+            return sample_ctrl_pts(self.s, vals, self.n_init)
+        return [(float(self.s[0]), float(vals[0])),
+                (float(self.s[-1]), float(vals[-1]))]
 
     def compute(self) -> np.ndarray:
         self._cached = spline_interp(self._ctrl, self.s)
@@ -135,8 +160,7 @@ class ProfileEditor:
 
     def reset(self, init_vals: Optional[np.ndarray] = None):
         v = init_vals if init_vals is not None else self.init_vals
-        self._ctrl = [(float(self.s[0]), float(v[0])),
-                      (float(self.s[-1]), float(v[-1]))]
+        self._ctrl = self._make_init_ctrl(v)
         self._drag_idx = None
 
     # ── events (return True when redraw needed) ───────────────────────────────
@@ -213,6 +237,11 @@ class WaypointEditor:
         self.ax_vel = self.fig.add_subplot(gs[0, 1])
         self.ax_ey  = self.fig.add_subplot(gs[1, 1])
 
+        # colorbar axes: created once, reused every refresh
+        divider = make_axes_locatable(self.ax_map)
+        self.ax_cbar = divider.append_axes('right', size='4%', pad=0.08)
+        self._cbar = None
+
         # ── profile editors ───────────────────────────────────────────────────
         v_orig = df['vx_mps'].values
         v_top  = max(float(v_orig.max()) * 1.2, 10.0)
@@ -223,6 +252,7 @@ class WaypointEditor:
             ylabel='vx_mps [m/s]',
             ylim=(0.0, v_top),
             original=v_orig,
+            n_init=12,          # uniform grid + extrema → ~33 ctrl pts, RMSE ~0.48 m/s vs original
         )
 
         half_w = max(float(df['w_tr_right_m'].max()),
@@ -234,10 +264,17 @@ class WaypointEditor:
             ylabel='ey [m]  (+ = left of heading)',
             ylim=(-half_w, half_w),
             original=np.zeros(len(df)),
+            n_init=2,
         )
 
         self.vel_ed.active = True
         self._active: ProfileEditor = self.vel_ed
+
+        # ── cursor state (arc-length value under mouse) ───────────────────────
+        self._cursor_s: Optional[float] = None
+        self._cur_vel  = None   # vertical line on vel panel
+        self._cur_ey   = None   # vertical line on ey panel
+        self._cur_dot  = None   # circle on map
 
         # ── events ────────────────────────────────────────────────────────────
         c = self.fig.canvas
@@ -256,6 +293,9 @@ class WaypointEditor:
         ey  = self.ey_ed.draw()
         self._draw_map(vel, ey)
         self._set_hint()
+        self._init_cursor_artists()          # recreate after cla()
+        if self._cursor_s is not None:
+            self._move_cursor(self._cursor_s)
         self.fig.canvas.draw_idle()
 
     def _draw_map(self, vel: np.ndarray, ey: np.ndarray):
@@ -289,9 +329,72 @@ class WaypointEditor:
         sc = ax.scatter(x_new, y_new, c=vel, cmap='RdYlGn',
                          s=14, vmin=0, vmax=float(self.vel_ed.ylim[1]),
                          zorder=3)
-        self.fig.colorbar(sc, ax=ax, label='vx [m/s]', shrink=0.65, pad=0.02)
+
+        # reuse fixed colorbar axes — never resize ax_map
+        self.ax_cbar.cla()
+        if self._cbar is None:
+            self._cbar = self.fig.colorbar(sc, cax=self.ax_cbar)
+            self._cbar.set_label('vx [m/s]', fontsize=8)
+        else:
+            self._cbar.update_normal(sc)
+
         ax.plot(x_new[0], y_new[0], 'b^', ms=10, zorder=6, label='start')
+        ax.plot([], [], 'k-', lw=0.9, alpha=0.5, label='boundary')
+
+        # arc-length tick marks every 5 m
+        tick_s = np.arange(0, self.s[-1], 5.0)
+        for ts in tick_s:
+            ti = int(np.argmin(np.abs(self.s - ts)))
+            ax.plot(x_new[ti], y_new[ti], 'w+', ms=7, mew=1.5, zorder=4)
+            ax.text(x_new[ti], y_new[ti], f' {ts:.0f}m',
+                    fontsize=5.5, color='#333', zorder=5,
+                    ha='left', va='bottom',
+                    bbox=dict(boxstyle='round,pad=0.1', fc='white',
+                              ec='none', alpha=0.55))
+
         ax.legend(fontsize=7, loc='upper right')
+
+    # ── cursor (hover sync across all panels) ────────────────────────────────
+
+    def _init_cursor_artists(self):
+        """Create cursor artists after each full cla() refresh."""
+        kw = dict(zorder=12, animated=False)
+        self._cur_vel, = self.ax_vel.plot([], [], color='tomato',
+                                           lw=1.3, ls='--', alpha=0.85, **kw)
+        self._cur_ey,  = self.ax_ey.plot([], [], color='tomato',
+                                          lw=1.3, ls='--', alpha=0.85, **kw)
+        self._cur_dot, = self.ax_map.plot([], [], 'o', ms=13, zorder=12,
+                                           color='none',
+                                           markeredgecolor='tomato',
+                                           markeredgewidth=2.5)
+        self._cur_lbl  = self.ax_map.text(0, 0, '', fontsize=8,
+                                           color='tomato', zorder=13,
+                                           ha='left', va='bottom',
+                                           bbox=dict(boxstyle='round,pad=0.15',
+                                                     fc='white', ec='tomato',
+                                                     alpha=0.8))
+
+    def _move_cursor(self, s_val: float):
+        """Update cursor artists to arc-length position s_val."""
+        idx = int(np.argmin(np.abs(self.s - s_val)))
+
+        # vertical lines on profile panels
+        for line, ax in ((self._cur_vel, self.ax_vel),
+                          (self._cur_ey,  self.ax_ey)):
+            yl = ax.get_ylim()
+            line.set_data([s_val, s_val], yl)
+
+        # dot + label on map
+        ey  = self.ey_ed.current
+        psi = self.df_orig['psi_rad'].values
+        x0  = self.df_orig['x_m'].values
+        y0  = self.df_orig['y_m'].values
+        xp  = x0[idx] - ey[idx] * np.sin(psi[idx])
+        yp  = y0[idx] + ey[idx] * np.cos(psi[idx])
+        self._cur_dot.set_data([xp], [yp])
+        self._cur_lbl.set_position((xp, yp))
+        v_here = float(self.vel_ed.current[idx])
+        self._cur_lbl.set_text(f' {s_val:.1f}m  {v_here:.2f}m/s')
 
     def _set_hint(self, extra: str = ''):
         hint = ('V velocity | E lateral-ey  ·  '
@@ -322,10 +425,37 @@ class WaypointEditor:
             self._refresh()
 
     def _on_motion(self, event):
-        if event.inaxes != self._active.ax or event.xdata is None:
+        # ── dragging a control point (full refresh) ───────────────────────────
+        if (self._active._drag_idx is not None
+                and event.inaxes == self._active.ax
+                and event.xdata is not None):
+            if self._active.on_drag(event.xdata, event.ydata):
+                self._refresh()
             return
-        if self._active.on_drag(event.xdata, event.ydata):
-            self._refresh()
+
+        # ── hover cursor (lightweight, no cla) ───────────────────────────────
+        if event.xdata is None or self._cur_vel is None:
+            return
+
+        s_val: Optional[float] = None
+
+        if event.inaxes in (self.ax_vel, self.ax_ey):
+            s_val = float(np.clip(event.xdata, self.s[0], self.s[-1]))
+
+        elif event.inaxes == self.ax_map:
+            # find nearest trajectory point to mouse position
+            ey  = self.ey_ed.current
+            psi = self.df_orig['psi_rad'].values
+            x_tr = self.df_orig['x_m'].values - ey * np.sin(psi)
+            y_tr = self.df_orig['y_m'].values + ey * np.cos(psi)
+            idx  = int(np.argmin(np.hypot(x_tr - event.xdata,
+                                           y_tr - event.ydata)))
+            s_val = float(self.s[idx])
+
+        if s_val is not None:
+            self._cursor_s = s_val
+            self._move_cursor(s_val)
+            self.fig.canvas.draw_idle()
 
     def _on_release(self, event):
         if self._active.on_release():
