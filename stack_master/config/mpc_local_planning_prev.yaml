@@ -49,7 +49,7 @@ mpc_local_planner:
 
     #  TRACK BOUNDARY SOFT PENALTY  (soft wall cost)
     #  ┌─────────────┬──────────────────────────────────────────────────────────┐
-    #  │  Q_ts       │  quadratic penalty when |ey| > hw - CAR_W/2             │
+    #  │  Q_ts       │  quadratic penalty when |ey| > hw - CAR_W/2              │
     #  │             │  ↑ = stronger repulsion from walls                       │
     #  │             │  set 0 to disable (pure hard constraint only)            │
     #  └─────────────┴──────────────────────────────────────────────────────────┘

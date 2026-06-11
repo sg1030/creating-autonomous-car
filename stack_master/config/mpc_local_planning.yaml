@@ -71,4 +71,4 @@ mpc_local_planner:
     v_max:      6.0   # [m/s]   maximum speed  (hard upper bound on v)
     a_min:     -1.0   # [m/s²]  maximum braking deceleration
     a_max:      1.0   # [m/s²]  maximum acceleration
-    delta_max:  0.25   # [rad]   maximum steering angle  (~23 °)
+    delta_max:  0.4   # [rad]   maximum steering angle  (~23 °)

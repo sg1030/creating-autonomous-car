@@ -50,7 +50,8 @@ PARAMS = {
 
     # ── Speed ─────────────────────────────────────────────────────────
     'speed_lookahead': 0.2,     # [s]   propagate position by this to read speed
-    'lat_err_coeff':   0.5,     # [0–1] lateral-error speed penalty strength
+    'lat_speed_gain':  1.0,     # [≥0]  speed reduction per [m] of lateral error (0=off)
+    'delta_speed_gain': 2.0,    # [≥0]  speed reduction per [rad] of steering angle (0=off)
 
     # ── Steering ──────────────────────────────────────────────────────
     'steer_spd_start': 3.0,     # [m/s] speed at which steer downscaling begins
@@ -75,8 +76,9 @@ class PPNode(Node):
         self.lookahead_max   = p('pp_t_clip_max')
         self.lookahead_k     = p('lookahead_k')
         self.speed_la        = p('speed_lookahead')
-        self.lat_err_coeff   = p('lat_err_coeff')
-        self.steer_spd_start = p('steer_spd_start')
+        self.lat_speed_gain   = p('lat_speed_gain')
+        self.delta_speed_gain = p('delta_speed_gain')
+        self.steer_spd_start  = p('steer_spd_start')
         self.steer_spd_end   = p('steer_spd_end')
         self.steer_downscale = p('steer_downscale')
         self.steer_rate_lim  = p('steer_rate_limit')
@@ -92,7 +94,7 @@ class PPNode(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
         self.create_subscription(Odometry,  '/vesc/odom',       self._odom_cb, 10)
-        self.create_subscription(WpntArray, '/local_waypoints', self._wp_cb, latched)
+        self.create_subscription(WpntArray, '/global_waypoints', self._wp_cb, latched)
         self.create_subscription(Float32, '/mpc_planner/lookahead_cap',
                                  lambda m: setattr(self, '_lookahead_cap', m.data), 10)
         self.drive_pub     = self.create_publisher(
@@ -134,7 +136,8 @@ class PPNode(Node):
         dists  = np.hypot(dx, dy)
 
         # ── Step 2: lateral error = distance to nearest waypoint ──────
-        lat_err = float(dists.min())
+        nearest_idx = int(np.argmin(dists))
+        lat_err = float(dists[nearest_idx])
 
         # ── Step 3: adaptive L1 distance ─────────────────────────────
         #   raw:   L = k · v
@@ -144,17 +147,18 @@ class PPNode(Node):
         L_lo  = max(self.lookahead_min, math.sqrt(2.0) * lat_err)
         L     = min(max(L_raw, L_lo), self._lookahead_cap)
 
-        # ── Step 4: select the L1 target waypoint ────────────────────
-        c, s    = math.cos(yaw), math.sin(yaw)
-        local_x = c * dx + s * dy          # signed forward component
-        ahead   = local_x > 0
+        # ── Step 4: select lookahead waypoint by walking forward from nearest ──
+        # Walk forward along the track index order (handles circular tracks correctly).
+        # This prevents jumping to geometrically close but track-order-wrong waypoints.
+        n = len(self.waypoints)
+        tgt_idx = nearest_idx
+        for i in range(1, n):
+            idx = (nearest_idx + i) % n
+            d = math.hypot(wp_xy[idx, 0] - pos.x, wp_xy[idx, 1] - pos.y)
+            if d >= L:
+                tgt_idx = idx
+                break
 
-        err = np.abs(dists - L)
-        err[~ahead] = np.inf
-        if np.all(np.isinf(err)):
-            return 0.0, 0.0
-
-        tgt_idx = int(np.argmin(err))
         self._publish_lookahead(self.waypoints[tgt_idx])
 
         # ── Step 5: steering (L1 / Pure Pursuit) ─────────────────────
@@ -178,48 +182,39 @@ class PPNode(Node):
         steer = self._steer_rate_limit(steer)
 
         # ── Step 6: speed ─────────────────────────────────────────────
-        speed = self._target_speed(pos, yaw, ego_v, lat_err)
+        speed = self._target_speed(nearest_idx, ego_v, lat_err)
+        speed = speed / (1.0 + self.delta_speed_gain * abs(steer))
 
         return steer, speed
 
     # ──────────────────────────────────────────────────────────────────
     # Speed helpers
     # ──────────────────────────────────────────────────────────────────
-    def _target_speed(self, pos, yaw, ego_v, lat_err):
-        """Read speed from the waypoint nearest to the time-propagated position."""
-        dt  = self.speed_la
-        px  = pos.x + math.cos(yaw) * ego_v * dt
-        py  = pos.y + math.sin(yaw) * ego_v * dt
-
-        wp_xy = np.array([(w.x_m, w.y_m) for w in self.waypoints])
-        dists = np.hypot(wp_xy[:, 0] - px, wp_xy[:, 1] - py)
-        idx   = int(np.argmin(dists))
+    def _target_speed(self, nearest_idx, ego_v, lat_err):
+        """Read speed from a waypoint ahead of nearest_idx by speed_lookahead seconds."""
+        n = len(self.waypoints)
+        lookahead_dist = ego_v * self.speed_la
+        acc = 0.0
+        idx = nearest_idx
+        for i in range(1, n):
+            next_idx = (nearest_idx + i) % n
+            prev_idx = (nearest_idx + i - 1) % n
+            acc += math.hypot(
+                self.waypoints[next_idx].x_m - self.waypoints[prev_idx].x_m,
+                self.waypoints[next_idx].y_m - self.waypoints[prev_idx].y_m,
+            )
+            idx = next_idx
+            if acc >= lookahead_dist:
+                break
 
         speed = float(self.waypoints[idx].vx_mps)
-        speed=speed*0.9
         if speed <= 0.0:
             speed = 1.5
-        
 
         return self._speed_adjust_lat_err(speed, lat_err)
 
     def _speed_adjust_lat_err(self, speed, lat_err):
-        """Reduce speed when car is laterally off-path, especially in corners.
-
-        Matches PP_Controller.py logic:
-          lat_e_norm : 0 → 1 as lateral error grows from 0 → 0.5 m
-          curv_norm  : 0 at mean |κ| ≤ 0.8, linearly → 1 at mean |κ| ≥ 1.2
-          factor     = (1 - coeff) + coeff · exp(−lat_e_norm · curv_norm)
-        """
-        lat_e_norm = min(lat_err, 0.5) / 0.5   # [0, 1]
-
-        kappas    = [abs(w.kappa_radpm) for w in self.waypoints]
-        mean_kap  = float(np.mean(kappas)) if kappas else 0.0
-        # 0 when mean_kappa ≤ 0.8 rad/m, ramps to 1 at 1.2 rad/m
-        curv_norm = min(max(2.5 * mean_kap - 2.0, 0.0), 1.0)
-
-        k      = self.lat_err_coeff
-        factor = 1.0 - k + k * math.exp(-lat_e_norm * curv_norm)
+        factor = 1.0 / (1.0 + self.lat_speed_gain * lat_err)
         return max(speed * factor, 0.0)
 
     # ──────────────────────────────────────────────────────────────────
