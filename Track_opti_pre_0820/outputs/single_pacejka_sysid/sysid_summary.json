@@ -1,0 +1,54 @@
+{
+  "identified_params": {
+    "B": 2.99999999993482,
+    "C": 1.9999999999999993,
+    "mu": 0.30000000000000004,
+    "Iz": 0.05999999999999999,
+    "m": 3.0,
+    "lf": 0.14,
+    "lr": 0.14,
+    "g": 9.81,
+    "min_vx_for_slip": 0.3
+  },
+  "optimizer": {
+    "cost": 717.9390557534234,
+    "success": true,
+    "message": "`gtol` termination condition is satisfied.",
+    "nfev": 12
+  },
+  "summary": {
+    "per_file": {
+      "/home/hmcl/data needed/driving_data_20260602_170124.csv": {
+        "n_segments": 12,
+        "mean_rmse_xy_m": 2.1370207497343645,
+        "mean_rmse_ey_m": 1.4185070817447103,
+        "mean_rmse_vx_mps": 1.062398884324131,
+        "mean_rmse_wz_radps": 0.5503906820879466
+      },
+      "/home/hmcl/data needed/driving_data_20260602_181926.csv": {
+        "n_segments": 3,
+        "mean_rmse_xy_m": 9.04098929397022,
+        "mean_rmse_ey_m": 3.972932558902844,
+        "mean_rmse_vx_mps": 0.7274605370126898,
+        "mean_rmse_wz_radps": 0.46007584029649945
+      },
+      "/home/hmcl/data needed/driving_data_20260602_182106.csv": {
+        "n_segments": 1,
+        "mean_rmse_xy_m": 12.886142345471162,
+        "mean_rmse_ey_m": 11.307663203743514,
+        "mean_rmse_vx_mps": 1.7618211158498935,
+        "mean_rmse_wz_radps": 0.809175080554983
+      }
+    },
+    "overall": {
+      "mean_rmse_xy_m": 4.103334951512137,
+      "mean_rmse_ey_m": 2.5155341163367857,
+      "mean_rmse_vx_mps": 1.043311833673596,
+      "mean_rmse_wz_radps": 0.54963067415624
+    }
+  },
+  "resample_dt": 0.05,
+  "min_speed": 0.5,
+  "track_length_m": 77.28374675615164,
+  "n_segments": 16
+}

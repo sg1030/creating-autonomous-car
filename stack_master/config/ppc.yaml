@@ -13,8 +13,8 @@ pp:
     lookahead_k:     0.5      # [s]   speed coefficient
 
     # ── Speed ─────────────────────────────────────────────────────────
-    speed_lookahead: 0.2      # [s]   time horizon for target speed lookup
-    lat_speed_gain:  0.75      # [≥0]  deceleration gain per [m] lateral error (0=off)
+    speed_lookahead: 0.5      # [s]   time horizon for target speed lookup
+    lat_speed_gain:  0.0      # [≥0]  deceleration gain per [m] lateral error (0=off)
     delta_speed_gain: 0.0     # [≥0]  deceleration gain per [rad] steering angle (0=off)
 
     # ── Steering ──────────────────────────────────────────────────────

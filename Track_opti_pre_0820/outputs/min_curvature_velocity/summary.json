@@ -1,0 +1,28 @@
+{
+  "config": {
+    "ns": 300,
+    "v_max": 6.0,
+    "v_min": 0.5,
+    "a_lat_max": 3.5,
+    "a_lon_max": 2.5,
+    "a_brake_max": 4.0,
+    "track_width_scale": 0.3,
+    "smooth_window": 51,
+    "smooth_polyorder": 3
+  },
+  "summary": {
+    "track_length_m": 75.23658394008326,
+    "lap_time_s": 19.179205357963596,
+    "v_min_mps": 2.332066488899143,
+    "v_max_mps": 6.0,
+    "kappa_max_radpm": 0.6435557689038989,
+    "d_opt_min_m": -0.3150237424044702,
+    "d_opt_max_m": 0.27339461213352606
+  },
+  "saved_files": {
+    "global_waypoint_csv": "outputs/min_curvature_velocity/global_waypoint.csv",
+    "detail_csv": "outputs/min_curvature_velocity/min_curv_velocity_detail.csv",
+    "traj_plot": "outputs/min_curvature_velocity/min_curv_traj.png",
+    "profile_plot": "outputs/min_curvature_velocity/min_curv_profile.png"
+  }
+}

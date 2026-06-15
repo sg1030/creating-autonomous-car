@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ds": 0.05,
+    "wheelbase": 0.33,
+    "v_max": 6.0,
+    "a_lat_max": 3.5,
+    "a_lon_max": 2.5,
+    "a_brake_max": 4.0,
+    "speed_iterations": 30,
+    "min_speed": 0.5
+  },
+  "summary": {
+    "track_length_m": 77.4397221659501,
+    "n_samples": 1549,
+    "ds_m": 0.05,
+    "wheelbase_m": 0.33,
+    "v_max_mps": 5.6914862569476945,
+    "v_mean_mps": 3.7592319292029925,
+    "lap_time_s": 22.45667868094339,
+    "max_abs_curvature_1pm": 1.3549972818095857,
+    "max_abs_delta_rad": 0.4204805902399293,
+    "rollout_rmse_xy_m": 0.18435351009752646,
+    "rollout_rmse_psi_rad": 0.02049933483436652,
+    "rollout_rmse_v_mps": 0.0
+  }
+}

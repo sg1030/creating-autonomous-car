@@ -1,0 +1,35 @@
+{
+  "config": {
+    "ds": 0.05,
+    "wheelbase": 0.33,
+    "v_max": 4.0,
+    "a_lat_max": 3.5,
+    "a_lon_max": 2.5,
+    "a_brake_max": 4.0,
+    "speed_iterations": 30,
+    "min_speed": 0.5
+  },
+  "summary": {
+    "track_length_m": 77.43559394252384,
+    "n_nodes": 1549,
+    "d_dist_m": 0.049990904799217986,
+    "wheelbase_m": 0.33,
+    "v_max_mps": 4.0,
+    "v_mean_mps": 3.473936615848759,
+    "lap_time_s": 23.62999204683045,
+    "max_abs_curvature_1pm": 1.4484620400615715,
+    "max_abs_delta_rad": 0.4458870927921737,
+    "rollout_rmse_xy_m": 1.0169378648525123,
+    "rollout_rmse_psi_rad": 0.08227310630631464,
+    "rollout_rmse_v_mps": 0.0
+  },
+  "saved_files": {
+    "track_assets": "outputs/kinematic_track_trajectory_trackclass/track_assets",
+    "reference_frenet_csv": "outputs/kinematic_track_trajectory_trackclass/kinematic_reference_frenet.csv",
+    "reference_xy_csv": "outputs/kinematic_track_trajectory_trackclass/kinematic_reference_xy.csv",
+    "rollout_csv": "outputs/kinematic_track_trajectory_trackclass/kinematic_rollout.csv",
+    "combined_csv": "outputs/kinematic_track_trajectory_trackclass/kinematic_reference_combined.csv",
+    "map_png": "outputs/kinematic_track_trajectory_trackclass/trajectory_map_speed_colormap.png",
+    "profile_png": "outputs/kinematic_track_trajectory_trackclass/trajectory_profile.png"
+  }
+}

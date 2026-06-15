@@ -1,0 +1,33 @@
+{
+  "config": {
+    "ns": 300,
+    "dt": 0.05,
+    "track_width_scale": 0.6,
+    "track_width_override_m": null
+  },
+  "summary": {
+    "track_length_m": 77.4354042608405,
+    "track_width_mean_m": 1.5525292535305983,
+    "track_width_std_m": 0.25959631844930964,
+    "track_width_scale": 0.6,
+    "effective_half_width_m": 0.4657587760591795,
+    "ns": 300,
+    "dt": 0.05,
+    "optimized_lap_time_s": 10.012205373379468,
+    "ey_min_m": -0.4657587588061896,
+    "ey_max_m": 0.46575877937340104,
+    "v_min_mps": 6.273207109633779,
+    "v_max_mps": 7.000000020211125
+  },
+  "saved_files": {
+    "optimized_xy_txt": "outputs/kinematic_min_laptime_initstyle/optimized_traj0.txt",
+    "optimized_frenet_txt": "outputs/kinematic_min_laptime_initstyle/optimized_traj0_frenet.txt",
+    "optimized_xy_csv": "outputs/kinematic_min_laptime_initstyle/optimized_traj0.csv",
+    "optimized_frenet_csv": "outputs/kinematic_min_laptime_initstyle/optimized_traj0_frenet.csv",
+    "combined_csv": "outputs/kinematic_min_laptime_initstyle/optimized_traj0_combined.csv",
+    "traj_plot": "outputs/kinematic_min_laptime_initstyle/optimal_traj_kin.png",
+    "profile_plot": "outputs/kinematic_min_laptime_initstyle/optimal_profile_kin.png",
+    "global_waypoint_csv": "outputs/kinematic_min_laptime_initstyle/global_waypoint.csv",
+    "track_dir": "outputs/kinematic_min_laptime_initstyle/Traj"
+  }
+}
