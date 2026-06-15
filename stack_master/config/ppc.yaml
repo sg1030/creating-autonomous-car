@@ -1,24 +1,25 @@
 pp:
   ros__parameters:
     control_rate_hz:  50.0
-    estop_min_dist:   0.5     # [m]
-    estop_angle_deg: 30.0     # [deg]
     pp_wheelbase:     0.33    # [m]
     pp_max_steer:     0.4     # [rad]
 
     # ── Adaptive L1 lookahead ──────────────────────────────────────────
-    # L = clip(lookahead_k * v,  [max(pp_lookahead, √2·|lateral_err|),  pp_t_clip_max])
-    pp_lookahead:    1.0   # [m]   absolute minimum lookahead
-    pp_t_clip_max:   3.0      # [m]   absolute maximum lookahead
-    lookahead_k:     0.5      # [s]   speed coefficient
+    # L = clip(lookahead_k * v / (1 + lat_shrink_gain * lat_err + kappa_shrink_gain * |κ|),
+    #          [pp_lookahead, pp_t_clip_max])
+    pp_lookahead:       0.8   # [m]    absolute minimum lookahead
+    pp_t_clip_max:      3.0   # [m]    absolute maximum lookahead  (L 길면 코너 미리 꺾어 weave)
+    lookahead_k:        0.5   # [s]    speed coefficient  (짧게 → 경로 충실 추종, 타겟 점프 제거)
+    lat_shrink_gain:    0.0   # [≥0]   lookahead reduction per [m] lateral error (0=off)
+    kappa_shrink_gain:  0.0   # [≥0]   lookahead reduction per [rad/m] curvature (0=off)
 
     # ── Speed ─────────────────────────────────────────────────────────
-    speed_lookahead: 0.2      # [s]   time horizon for target speed lookup
-    lat_speed_gain:  0.9      # [≥0]  deceleration gain per [m] lateral error (0=off)
-    delta_speed_gain: 0.0     # [≥0]  deceleration gain per [rad] steering angle (0=off)
+    max_decel:        6.0     # [m/s²] braking limit for speed planning; target = min √(vx²+2·a·d) ahead
+    lat_speed_gain:   0.0     # [≥0]   deceleration gain per [m] lateral error (0=off)
+    delta_speed_gain: 0.0     # [≥0]   deceleration gain per [rad] steering angle (0=off)
 
     # ── Steering ──────────────────────────────────────────────────────
-    steer_spd_start: 3.0      # [m/s] speed where steer downscaling starts
-    steer_spd_end:   6.0      # [m/s] speed where downscaling saturates
-    steer_downscale: 0.0      # [0–1] steer fraction removed at steer_spd_end
-    steer_rate_limit: 10.0    # [rad] max |Δsteer| per control step
+    steer_spd_start:  3.0     # [m/s]  speed where steer downscaling starts
+    steer_spd_end:    6.0     # [m/s]  speed where downscaling saturates
+    steer_downscale:  0.0     # [0–1]  steer fraction removed at steer_spd_end  (0=off)
+    steer_rate_limit: 10.0    # [rad]  max |Δsteer| per control step  (10.0=effectively off)

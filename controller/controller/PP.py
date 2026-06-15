@@ -1,31 +1,5 @@
 #!/usr/bin/env python3
-"""
-PP_L1.py  —  L1-guidance Pure Pursuit controller
-
-Improvements over basic PP.py (inspired by PP_Controller.py / ForzaETH stack):
-
-  1. Adaptive L1 lookahead with lateral-error floor
-       L = clip(k·v,  [max(L_min, √2·|d|),  L_max])
-       When the car drifts off the path, the lookahead floor grows so PP
-       steers back more aggressively.
-
-  2. Separate speed lookahead
-       Target speed is read from the waypoint nearest to the position
-       propagated (speed_lookahead seconds) ahead, not from the steering
-       target.  Gives smoother, more anticipatory speed commands.
-
-  3. Lateral-error speed reduction
-       In corners, speed is reduced proportionally to lateral offset and
-       path curvature: v *= (1 - k + k·exp(-lat_e_norm · curv_norm))
-
-  4. High-speed steer downscaling
-       Steer gain is linearly reduced from steer_spd_start to steer_spd_end
-       to prevent over-steering at speed.
-
-  5. Steer rate limiting
-       Steering angle change per control step is bounded to steer_rate_limit
-       to eliminate sudden jumps.
-"""
+"""Pure Pursuit controller with adaptive lookahead and speed control."""
 
 import math
 import numpy as np
@@ -34,7 +8,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
-from std_msgs.msg import Float32
 from visualization_msgs.msg import Marker
 from f110_msgs.msg import WpntArray
 
@@ -44,12 +17,14 @@ PARAMS = {
     'pp_max_steer':    0.4,     # [rad]
 
     # ── Adaptive L1 lookahead ──────────────────────────────────────────
-    'pp_lookahead':    0.5,     # [m]   absolute minimum lookahead
-    'pp_t_clip_max':   3.0,     # [m]   absolute maximum lookahead
-    'lookahead_k':     0.4,     # [s]   L = k·v  (before clamping)
+    'pp_lookahead':      0.5,   # [m]   absolute minimum lookahead
+    'pp_t_clip_max':     3.0,   # [m]   absolute maximum lookahead
+    'lookahead_k':       0.4,   # [s]   L = k·v  (before clamping)
+    'lat_shrink_gain':   0.0,   # [≥0]  lookahead reduction per [m] lateral error (0=off)
+    'kappa_shrink_gain': 0.0,   # [≥0]  lookahead reduction per [rad/m] curvature (0=off)
 
     # ── Speed ─────────────────────────────────────────────────────────
-    'speed_lookahead': 0.2,     # [s]   propagate position by this to read speed
+    'max_decel':       6.0,     # [m/s²] braking limit for speed planning (real grip limit)
     'lat_speed_gain':  1.0,     # [≥0]  speed reduction per [m] of lateral error (0=off)
     'delta_speed_gain': 2.0,    # [≥0]  speed reduction per [rad] of steering angle (0=off)
 
@@ -72,10 +47,12 @@ class PPNode(Node):
 
         self.wheelbase       = p('pp_wheelbase')
         self.max_steer       = p('pp_max_steer')
-        self.lookahead_min   = p('pp_lookahead')
-        self.lookahead_max   = p('pp_t_clip_max')
-        self.lookahead_k     = p('lookahead_k')
-        self.speed_la        = p('speed_lookahead')
+        self.lookahead_min      = p('pp_lookahead')
+        self.lookahead_max      = p('pp_t_clip_max')
+        self.lookahead_k        = p('lookahead_k')
+        self.lat_shrink_gain    = p('lat_shrink_gain')
+        self.kappa_shrink_gain  = p('kappa_shrink_gain')
+        self.max_decel       = p('max_decel')
         self.lat_speed_gain   = p('lat_speed_gain')
         self.delta_speed_gain = p('delta_speed_gain')
         self.steer_spd_start  = p('steer_spd_start')
@@ -86,17 +63,14 @@ class PPNode(Node):
         self.odom       = None
         self.waypoints  = []
         self._prev_steer = 0.0
-        self._lookahead_cap = self.lookahead_max   # overridden by MPC planner topic
 
         latched = QoSProfile(
             depth=1,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
-        self.create_subscription(Odometry,  '/vesc/odom',       self._odom_cb, 10)
-        self.create_subscription(WpntArray, '/global_waypoints', self._wp_cb, latched)
-        self.create_subscription(Float32, '/mpc_planner/lookahead_cap',
-                                 lambda m: setattr(self, '_lookahead_cap', m.data), 10)
+        self.create_subscription(Odometry,  '/vesc/odom',        self._odom_cb, 10)
+        self.create_subscription(WpntArray, '/global_waypoints',  self._wp_cb,  latched)
         self.drive_pub     = self.create_publisher(
             AckermannDriveStamped, '/vesc/high_level/ackermann_cmd', 10)
         self.lookahead_pub = self.create_publisher(Marker, '/pp/lookahead', 10)
@@ -140,12 +114,11 @@ class PPNode(Node):
         lat_err = float(dists[nearest_idx])
 
         # ── Step 3: adaptive L1 distance ─────────────────────────────
-        #   raw:   L = k · v
-        #   floor: max(L_min,  √2 · lat_err)   ← grows when car is off-path
-        #   ceil:  L_max
-        L_raw = self.lookahead_k * ego_v
-        L_lo  = max(self.lookahead_min, math.sqrt(2.0) * lat_err)
-        L     = min(max(L_raw, L_lo), self._lookahead_cap)
+        #   L = k·v / (1 + lat_shrink·lat_err + kappa_shrink·|κ|)
+        kappa = abs(float(self.waypoints[nearest_idx].kappa_radpm))
+        denom = 1.0 + self.lat_shrink_gain * lat_err + self.kappa_shrink_gain * kappa
+        L     = self.lookahead_k * ego_v / denom
+        L     = min(max(L, self.lookahead_min), self.lookahead_max)
 
         # ── Step 4: select lookahead waypoint by walking forward from nearest ──
         # Walk forward along the track index order (handles circular tracks correctly).
@@ -191,11 +164,22 @@ class PPNode(Node):
     # Speed helpers
     # ──────────────────────────────────────────────────────────────────
     def _target_speed(self, nearest_idx, ego_v, lat_err):
-        """Read speed from a waypoint ahead of nearest_idx by speed_lookahead seconds."""
-        n = len(self.waypoints)
-        lookahead_dist = ego_v * self.speed_la
+        """Speed limited by braking distance to every upcoming corner.
+
+        For each waypoint j ahead, the fastest we may go *now* and still reach
+        its vx by braking at max_decel is  sqrt(vx_j² + 2·max_decel·dist_j).
+        The minimum over j gives a smooth profile that brakes at exactly
+        max_decel — it accelerates between corners and only brakes when truly
+        within braking range, so it neither enters corners hot nor stalls/holds
+        low speed early, even when the optimized vx profile itself demands an
+        impossible decel (e.g. -30 m/s²).
+        """
+        n  = len(self.waypoints)
+        a2 = 2.0 * self.max_decel
+        speed = float(self.waypoints[nearest_idx].vx_mps)
+        if speed <= 0.0:
+            speed = 1.5
         acc = 0.0
-        idx = nearest_idx
         for i in range(1, n):
             next_idx = (nearest_idx + i) % n
             prev_idx = (nearest_idx + i - 1) % n
@@ -203,13 +187,13 @@ class PPNode(Node):
                 self.waypoints[next_idx].x_m - self.waypoints[prev_idx].x_m,
                 self.waypoints[next_idx].y_m - self.waypoints[prev_idx].y_m,
             )
-            idx = next_idx
-            if acc >= lookahead_dist:
+            vj = float(self.waypoints[next_idx].vx_mps)
+            if vj > 0.0:
+                speed = min(speed, math.sqrt(vj * vj + a2 * acc))
+            # once the braking term alone exceeds top track speed, no farther
+            # point can constrain us → stop scanning
+            if a2 * acc > 64.0:
                 break
-
-        speed = float(self.waypoints[idx].vx_mps)
-        if speed <= 0.0:
-            speed = 1.5
 
         return self._speed_adjust_lat_err(speed, lat_err)
 
