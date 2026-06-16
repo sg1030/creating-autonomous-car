@@ -58,6 +58,15 @@ PARAMS = {
     'steer_spd_end':   6.0,     # [m/s] speed at which downscaling saturates
     'steer_downscale': 0.3,     # [0–1] fraction to remove at steer_spd_end
     'steer_rate_limit': 0.4,    # [rad] max |Δsteer| per control step
+
+    # ── Heading-error PID correction ───────────────────────────────────
+    # heading_err = angle between the heading vector and the bearing from the
+    # car to the lookahead point. A PID on this error is ADDED to the PP steer
+    # as a correction term.  All gains 0 → correction off (plain pure pursuit).
+    'heading_kp':    0.0,       # [—]      proportional gain
+    'heading_ki':    0.0,       # [1/s]    integral gain
+    'heading_kd':    0.0,       # [s]      derivative gain
+    'heading_i_max': 0.3,       # [rad]    anti-windup clamp on the I term
 }
 
 
@@ -82,6 +91,13 @@ class PPNode(Node):
         self.steer_spd_end   = p('steer_spd_end')
         self.steer_downscale = p('steer_downscale')
         self.steer_rate_lim  = p('steer_rate_limit')
+        self.heading_kp      = p('heading_kp')
+        self.heading_ki      = p('heading_ki')
+        self.heading_kd      = p('heading_kd')
+        self.heading_i_max   = p('heading_i_max')
+        self.ctrl_dt         = 1.0 / p('control_rate_hz')
+        self._head_int       = 0.0
+        self._head_prev_err  = 0.0
 
         self.odom       = None
         self.waypoints  = []
@@ -171,8 +187,13 @@ class PPNode(Node):
         if L_sq < 1e-6:
             return 0.0, 0.0
 
-        # δ = atan(wheelbase · 2·ly / L²)
-        steer = math.atan(self.wheelbase * 2.0 * ly / L_sq)
+        # δ = atan(wheelbase · 2·ly / L²)     (geometric pure pursuit)
+        steer_pp = math.atan(self.wheelbase * 2.0 * ly / L_sq)
+
+        # heading error: angle between the heading vector (+x in the vehicle
+        # frame) and the bearing to the lookahead point.  Add a PID correction.
+        heading_err = math.atan2(ly, lx)
+        steer = steer_pp + self._heading_pid(heading_err)
 
         # downscale at high speed
         steer = self._steer_speed_scale(steer, ego_v)
@@ -226,6 +247,16 @@ class PPNode(Node):
         t      = np.clip((speed - self.steer_spd_start) / spd_range, 0.0, 1.0)
         factor = 1.0 - t * self.steer_downscale
         return steer * factor
+
+    def _heading_pid(self, err):
+        """PID correction on the heading error to the lookahead point [rad]."""
+        # integral with sanity clamp on the accumulator
+        self._head_int = max(-50.0, min(50.0, self._head_int + err * self.ctrl_dt))
+        i_term = self.heading_ki * self._head_int
+        i_term = max(-self.heading_i_max, min(self.heading_i_max, i_term))  # anti-windup
+        d_err  = (err - self._head_prev_err) / self.ctrl_dt
+        self._head_prev_err = err
+        return self.heading_kp * err + i_term + self.heading_kd * d_err
 
     def _steer_rate_limit(self, steer):
         """Bound steering change to ±steer_rate_limit per control step."""

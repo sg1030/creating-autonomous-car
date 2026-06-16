@@ -83,13 +83,22 @@ def geom_from_xy(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 # ── velocity panel editor (1-D profile vs arc length) ──────────────────────────
 
 class ProfileEditor:
-    """Control points + spline for the velocity profile."""
+    """Velocity editor that HUGS the loaded profile.
+
+    The curve is `base + correction`, where base is the profile loaded from the
+    CSV and the correction is a spline through the control points' offsets from
+    base. With only the two endpoint controls (offset 0) the curve reproduces
+    the loaded profile exactly — so the editor opens on the existing optimized
+    velocity instead of a flat reset. Dragging a control point sets the absolute
+    value there; the curve still follows the loaded profile everywhere else.
+    """
 
     DRAG_FRAC = 0.04
 
     def __init__(self, s, init_vals, ax, *, color, title, ylabel, ylim, original=None):
         self.s, self.ax = s, ax
         self.init_vals = init_vals.copy()
+        self.base = init_vals.copy()          # loaded profile the curve hugs
         self.color, self.title, self.ylabel, self.ylim = color, title, ylabel, ylim
         self.original = original
         self._ctrl: List[CtrlPt] = [(float(s[0]),  float(init_vals[0])),
@@ -99,9 +108,11 @@ class ProfileEditor:
 
     def compute(self):
         c = sorted(self._ctrl, key=lambda p: p[0])
-        self._cached = spline_through(np.array([p[0] for p in c]),
-                                      np.array([p[1] for p in c]), self.s)
-        self._cached = np.clip(self._cached, self.ylim[0], self.ylim[1])
+        cs = np.array([p[0] for p in c])
+        cv = np.array([p[1] for p in c])
+        # control offsets from the loaded profile → spline → add back to base
+        corr = spline_through(cs, cv - np.interp(cs, self.s, self.base), self.s)
+        self._cached = np.clip(self.base + corr, self.ylim[0], self.ylim[1])
         return self._cached
 
     @property

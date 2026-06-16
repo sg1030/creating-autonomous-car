@@ -26,6 +26,7 @@ setup(
             'wall_follow_node   = controller.wallfollow:main',
             'gap_follow_node    = controller.gapfollow:main',
             'pp_node            = controller.PP:main',
+            'trailing_node      = controller.trailing_node:main',
         ],
     },
 )

@@ -2,7 +2,7 @@
   <!--
     ppc.launch.xml
     ====================
-    Pure Pursuit controller + global waypoints publisher.
+    Pure Pursuit controller + global waypoints publisher + optional trailing.
 
     Run AFTER:
       sim  : ros2 launch stack_master low_level.launch.xml sim:=true map:=f
@@ -11,6 +11,8 @@
     Usage:
       sim  : ros2 launch stack_master ppc.launch.xml map:=f sim:=true
       real : ros2 launch stack_master ppc.launch.xml map:=f
+
+    Trailing can be toggled via ppc.yaml: trailing.ros__parameters.trailing_enabled
   -->
 
   <arg name="map"    description="Map name (folder in stack_master/maps/)"/>
@@ -22,17 +24,43 @@
     <param name="map_name" value="$(var map)"/>
   </node>
 
-  <!-- Pure Pursuit controller.
-       sim : gym_bridge publishes /vesc/odom directly in map frame (GT), no remap needed.
-       real: VESC /vesc/odom is wheel-only in odom frame (drifts), use EKF-filtered
-             /car_state/odom (map frame) by remapping the subscription. -->
+  <!--
+    Pure Pursuit controller.
+    Output is redirected to /vesc/high_level/ackermann_cmd_pp so the trailing
+    node can intercept, override speed when trailing, and republish to
+    /vesc/high_level/ackermann_cmd (which the drive mux listens to).
+    When trailing is disabled the trailing node passes commands through unchanged.
+  -->
   <group if="$(var sim)">
     <node pkg="controller" exec="pp_node" name="pp" output="screen">
       <param from="$(var config)"/>
+      <remap from="/vesc/high_level/ackermann_cmd"
+             to="/vesc/high_level/ackermann_cmd_pp"/>
     </node>
   </group>
   <group unless="$(var sim)">
     <node pkg="controller" exec="pp_node" name="pp" output="screen">
+      <param from="$(var config)"/>
+      <remap from="/vesc/odom"                    to="/car_state/odom"/>
+      <remap from="/vesc/high_level/ackermann_cmd"
+             to="/vesc/high_level/ackermann_cmd_pp"/>
+    </node>
+  </group>
+
+  <!--
+    Trailing node: detection + Kalman tracking + PD speed override.
+    Subscribes to /vesc/high_level/ackermann_cmd_pp (PP output).
+    Publishes to   /vesc/high_level/ackermann_cmd  (drive mux input).
+    Visualisation: /trailing/obstacles  (MarkerArray)
+                   /trailing/opponent_velocity  (Marker arrow)
+  -->
+  <group if="$(var sim)">
+    <node pkg="controller" exec="trailing_node" name="trailing" output="screen">
+      <param from="$(var config)"/>
+    </node>
+  </group>
+  <group unless="$(var sim)">
+    <node pkg="controller" exec="trailing_node" name="trailing" output="screen">
       <param from="$(var config)"/>
       <remap from="/vesc/odom" to="/car_state/odom"/>
     </node>
