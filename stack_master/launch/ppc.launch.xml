@@ -57,11 +57,13 @@
   <group if="$(var sim)">
     <node pkg="controller" exec="trailing_node" name="trailing" output="screen">
       <param from="$(var config)"/>
+      <param name="map_name" value="$(var map)"/>
     </node>
   </group>
   <group unless="$(var sim)">
     <node pkg="controller" exec="trailing_node" name="trailing" output="screen">
       <param from="$(var config)"/>
+      <param name="map_name" value="$(var map)"/>
       <remap from="/vesc/odom" to="/car_state/odom"/>
     </node>
   </group>

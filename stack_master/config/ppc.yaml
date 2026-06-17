@@ -38,7 +38,7 @@ pp:
 # ──────────────────────────────────────────────────────────────────────────────
 trailing:
   ros__parameters:
-    trailing_enabled: false        # true = active; false = pass PP commands through unchanged
+    trailing_enabled: true        # true = active; false = pass PP commands through unchanged
 
     # ── Path-corridor filter ──────────────────────────────────────────
     # Trailing is only triggered when the Kalman-estimated opponent position
@@ -48,7 +48,7 @@ trailing:
 
     # ── Clustering (Adaptive Breakpoint Detector) ─────────────────────
     lambda_deg:          15.0    # [deg] max admissible incidence angle
-    cluster_sigma:        0.5    # [m]   range-noise term
+    cluster_sigma:        0.3    # [m]   range-noise term
     min_cluster_points:    10    # drop clusters with fewer points than this
 
     # ── L-shape fitting ───────────────────────────────────────────────
@@ -59,7 +59,7 @@ trailing:
     opp_max_lat:          1.0    # [m]   ignore obstacles farther sideways than this
     max_misses:            10    # drop the track after this many consecutive missed frames
     kalman_q:             0.5    # process-noise scale (larger = follow measurements less)
-    kalman_r:            0.20    # measurement-noise scale (larger = trust LiDAR less)
+    kalman_r:           2.5    # measurement-noise scale (larger = trust LiDAR less)
     lidar_to_base_x:     0.27    # [m]   base_link → laser TF offset (x)
 
     # ── Trailing PD speed control ─────────────────────────────────────
@@ -68,3 +68,18 @@ trailing:
     trailing_kp:          5.0    # P gain on the gap error (opp_dist - desired_gap)
     trailing_kd:          2.0    # D gain on the closing speed (d gap / dt)
     trailing_max_speed:   3.0    # [m/s] absolute speed cap during trailing
+
+    # ── Release ramp (trailing → free) ───────────────────────────────
+    # When trailing ends (opponent lost / off-path), the commanded speed is
+    # clamped to  min(pp_speed, ego_v + trailing_release_clip)  each step.
+    # This prevents a sudden jump to the global-waypoint speed.
+    # Ramp ends automatically once pp_speed ≤ ego_v + trailing_release_clip.
+    trailing_release_clip: 0.5   # [m/s] max speed step above current ego_v
+
+    # ── Map-based static scan filter ─────────────────────────────────
+    # Before clustering, LiDAR points whose map-frame position falls on a
+    # known occupied cell are removed.  This prevents track protrusions /
+    # walls from being clustered and misidentified as opponent cars.
+    use_map_filter:      true   # set false to disable (e.g. during mapping)
+    map_name:            final  # must match the 'map' argument in ppc.launch.xml
+    map_inflation_cells: 5      # inflate occupied mask by N cells (1 cell = 5 cm)

@@ -21,7 +21,11 @@ All tunable parameters live in ppc.yaml under the 'trailing' node name.
 """
 
 import math
+import os
+
 import numpy as np
+import yaml
+from ament_index_python.packages import get_package_share_directory
 
 import rclpy
 from rclpy.node import Node
@@ -48,6 +52,120 @@ def _scan_to_xy(ranges: np.ndarray, angle_min: float, angle_inc: float):
     x = np.where(valid, ranges * np.cos(angles), np.nan)
     y = np.where(valid, ranges * np.sin(angles), np.nan)
     return x, y
+
+
+# ===========================================================================
+#  Map-based LiDAR point filter
+# ===========================================================================
+
+def _load_pgm(path: str) -> np.ndarray:
+    """Load a binary (P5) or ASCII (P2) PGM file. Returns uint8 array (H, W)."""
+    with open(path, 'rb') as f:
+        magic = f.readline().decode('ascii').strip()
+        line  = f.readline().decode('ascii').strip()
+        while line.startswith('#'):
+            line = f.readline().decode('ascii').strip()
+        w, h = map(int, line.split())
+        _    = f.readline()   # maxval line — not needed (always 255 for 8-bit PGM)
+        data = (np.frombuffer(f.read(), dtype=np.uint8)
+                if magic == 'P5'
+                else np.array(f.read().split(), dtype=np.uint8))
+    return data.reshape((h, w))
+
+
+def _build_map_filter(pgm_path: str, yaml_path: str, inflation_cells: int):
+    """
+    Load an occupancy-grid map and return a pre-inflated boolean mask.
+
+    Returns (mask, origin_x, origin_y, resolution, height) on success,
+            (None, None, None, None, None) on any error.
+
+    mask[row, col] == True  →  the cell is a known static wall/boundary.
+    """
+    try:
+        with open(yaml_path, 'r') as f:
+            meta = yaml.safe_load(f)
+
+        resolution     = float(meta['resolution'])
+        origin_x       = float(meta['origin'][0])
+        origin_y       = float(meta['origin'][1])
+        occupied_thresh = float(meta.get('occupied_thresh', 0.65))
+        negate          = bool(meta.get('negate', 0))
+
+        img = _load_pgm(pgm_path)   # (H, W) uint8
+
+        # Convert pixel value to occupancy probability, then threshold.
+        # negate=0  →  occ = (255 - px) / 255   (dark = occupied)
+        # negate=1  →  occ = px / 255            (bright = occupied)
+        if negate:
+            occupied = img >= int(occupied_thresh * 255)
+        else:
+            occupied = img <= int((1.0 - occupied_thresh) * 255)
+
+        if inflation_cells > 0:
+            try:
+                from scipy.ndimage import binary_dilation
+                r      = inflation_cells
+                struct = np.ones((2 * r + 1, 2 * r + 1), dtype=bool)
+                occupied = binary_dilation(occupied, structure=struct)
+            except ImportError:
+                # Pure-numpy fallback: pad + slide
+                pad    = np.pad(occupied, inflation_cells,
+                                mode='constant', constant_values=False)
+                h_img, w_img = occupied.shape
+                result = occupied.copy()
+                for dr in range(2 * inflation_cells + 1):
+                    for dc in range(2 * inflation_cells + 1):
+                        result |= pad[dr:dr + h_img, dc:dc + w_img]
+                occupied = result
+
+        return occupied, origin_x, origin_y, resolution, img.shape[0]
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return None, None, None, None, None
+
+
+def _filter_scan_by_map(x: np.ndarray, y: np.ndarray,
+                         ex: float, ey: float, eyaw: float,
+                         lidar_base_x: float,
+                         map_mask: np.ndarray,
+                         origin_x: float, origin_y: float,
+                         resolution: float, map_height: int):
+    """
+    Set to nan every LiDAR point whose map-frame position falls inside an
+    inflated-occupied cell. x, y are in the lidar frame.
+    """
+    map_h, map_w = map_mask.shape
+    valid = np.isfinite(x) & np.isfinite(y)
+
+    # lidar frame → base_link frame → map frame
+    ce, se = math.cos(eyaw), math.sin(eyaw)
+    xl_b = x[valid] + lidar_base_x
+    mx   = np.full_like(x, np.nan)
+    my   = np.full_like(y, np.nan)
+    mx[valid] = ex + ce * xl_b - se * y[valid]
+    my[valid] = ey + se * xl_b + ce * y[valid]
+
+    # Integer cell indices
+    col = np.zeros(len(x), dtype=np.int32)
+    row = np.zeros(len(x), dtype=np.int32)
+    col[valid] = ((mx[valid] - origin_x) / resolution).astype(np.int32)
+    # PGM row 0 = top of image = max y in map  →  flip row
+    row[valid] = (map_height - 1
+                  - ((my[valid] - origin_y) / resolution).astype(np.int32))
+
+    in_bounds = (valid
+                 & (col >= 0) & (col < map_w)
+                 & (row >= 0) & (row < map_h))
+
+    # Clamp indices to (0,0) for out-of-bounds entries to allow safe indexing
+    sc = np.where(in_bounds, col, 0)
+    sr = np.where(in_bounds, row, 0)
+    is_wall = in_bounds & map_mask[sr, sc]
+
+    return np.where(is_wall, np.nan, x), np.where(is_wall, np.nan, y)
 
 
 # ===========================================================================
@@ -237,6 +355,12 @@ class TrailingNode(Node):
         'trailing_kp':          5.0,
         'trailing_kd':          2.0,
         'trailing_max_speed':   8.0,
+        # release ramp: max speed increase above ego_v when trailing ends
+        'trailing_release_clip': 0.5,  # [m/s]
+        # map-based static scan filter
+        'use_map_filter':       True,
+        'map_name':             '',
+        'map_inflation_cells':   3,    # cells to inflate occupied mask (1 cell = 5 cm)
     }
 
     def __init__(self):
@@ -263,6 +387,7 @@ class TrailingNode(Node):
         self.kp           = p('trailing_kp')
         self.kd           = p('trailing_kd')
         self.max_speed    = p('trailing_max_speed')
+        self.release_clip = p('trailing_release_clip')
 
         self.lookahead_pt = None   # (x, y) map-frame PP lookahead target
 
@@ -272,6 +397,35 @@ class TrailingNode(Node):
         self.ego_v     = 0.0
         self.have_pose = False
         self.pp_cmd    = None
+
+        # release-ramp state: prevents sudden acceleration when trailing ends
+        self._trailing_was_active = False
+        self._release_ramp_active = False
+
+        # Map-based scan filter
+        self.map_filter = None   # set to (mask, ox, oy, res, h) when loaded
+        if p('use_map_filter'):
+            map_name = p('map_name')
+            if map_name:
+                share_dir = get_package_share_directory('stack_master')
+                map_dir   = os.path.join(share_dir, 'maps', map_name)
+                pgm_path  = os.path.join(map_dir, f'{map_name}.pgm')
+                yaml_path = os.path.join(map_dir, f'{map_name}.yaml')
+                infl = int(p('map_inflation_cells'))
+                mask, ox, oy, res, mh = _build_map_filter(pgm_path, yaml_path, infl)
+                if mask is not None:
+                    self.map_filter = (mask, ox, oy, res, mh)
+                    self.get_logger().info(
+                        f'Map filter loaded: {pgm_path} '
+                        f'(inflation={infl} cells = {infl * res:.3f} m)')
+                else:
+                    self.get_logger().warn(
+                        f'Map filter failed to load from {map_dir}; '
+                        'proceeding without static filter.')
+            else:
+                self.get_logger().warn(
+                    'use_map_filter=true but map_name is empty; '
+                    'filter disabled. Pass map_name via ppc.yaml or launch arg.')
 
         self.create_subscription(Marker, '/pp/lookahead', self._lookahead_cb, 10)
         self.create_subscription(
@@ -353,12 +507,31 @@ class TrailingNode(Node):
             if not self._is_on_path(ox, oy):
                 speed_override = None
 
+        trailing_active = speed_override is not None
+
+        # Detect trailing → non-trailing transition and arm the release ramp
+        if self._trailing_was_active and not trailing_active:
+            self._release_ramp_active = True
+        if trailing_active:
+            self._release_ramp_active = False
+        self._trailing_was_active = trailing_active
+
+        # Determine final output speed
+        if trailing_active:
+            out_speed = float(speed_override)
+        elif self._release_ramp_active:
+            # Clamp commanded speed to ego_v + release_clip to prevent sudden acceleration
+            out_speed = min(msg.drive.speed, self.ego_v + self.release_clip)
+            if msg.drive.speed <= self.ego_v + self.release_clip:
+                self._release_ramp_active = False   # ramp complete
+        else:
+            out_speed = msg.drive.speed
+
         out = AckermannDriveStamped()
         out.header.stamp    = self.get_clock().now().to_msg()
         out.header.frame_id = msg.header.frame_id
         out.drive.steering_angle = msg.drive.steering_angle
-        out.drive.speed = float(speed_override) \
-            if speed_override is not None else msg.drive.speed
+        out.drive.speed = out_speed
         self.drive_pub.publish(out)
 
     def _scan_cb(self, msg: LaserScan) -> None:
@@ -373,6 +546,23 @@ class TrailingNode(Node):
 
         ranges = np.asarray(msg.ranges, dtype=float)
         x, y   = _scan_to_xy(ranges, msg.angle_min, msg.angle_increment)
+
+        # Remove LiDAR points that fall on known static map cells
+        if self.map_filter is not None:
+            mask, ox, oy, res, mh = self.map_filter
+            n_before = int(np.sum(np.isfinite(x) & np.isfinite(y)))
+            x, y = _filter_scan_by_map(
+                x, y, self.ex, self.ey, self.eyaw,
+                self.lidar_base_x, mask, ox, oy, res, mh)
+            n_after = int(np.sum(np.isfinite(x) & np.isfinite(y)))
+            self._filter_scan_cnt = getattr(self, '_filter_scan_cnt', 0) + 1
+            if self._filter_scan_cnt % 20 == 1:
+                self.get_logger().info(
+                    f'[map_filter] scan #{self._filter_scan_cnt}: '
+                    f'{n_before} pts → {n_after} pts '
+                    f'({n_before - n_after} removed, '
+                    f'{100*(n_before-n_after)/max(n_before,1):.0f}%)'
+                )
 
         clusters  = _cluster(x, y, msg.angle_increment,
                              self.lambda_rad, self.sigma, self.min_pts)
