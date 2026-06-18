@@ -13,6 +13,7 @@ pp:
     lookahead_k:     0.45      # [s]   speed coefficient
 
     # ── Speed ─────────────────────────────────────────────────────────
+    speed_scale:     1.01     # [—]   global multiplier on waypoint target speed (1.03 = +3%)
     speed_lookahead: 0.5      # [s]   time horizon for target speed lookup
     lat_speed_gain:  0.0      # [≥0]  deceleration gain per [m] lateral error (0=off)
     delta_speed_gain: 0.0     # [≥0]  deceleration gain per [rad] steering angle (0=off)
@@ -22,8 +23,8 @@ pp:
     # On the next launch the speed cap ramps linearly from slow_start_v0 up to
     # the full target over slow_start_dur seconds.  Re-applies on every restart
     # from a stop (e.g. an external controller releasing the car).
-    slow_start_enabled:  true  # true = ramp on every launch; false = disable
-    slow_start_dur:      5.0   # [s]   ramp duration
+    slow_start_enabled:  false  # true = ramp on every launch; false = disable
+    slow_start_dur:      2.0   # [s]   ramp duration
     slow_start_v0:       2.0   # [m/s] speed cap at t=0
     slow_start_v_thresh: 0.5   # [m/s] below this ego speed = "stopped"
 
@@ -75,8 +76,8 @@ trailing:
     # ── Trailing PD speed control ─────────────────────────────────────
     desired_gap:          2.5    # [m]   gap to hold behind the opponent
     detect_range:         8.0    # [m]   start trailing reactions within this distance
-    trailing_kp:          1.0    # P gain on the gap error (opp_dist - desired_gap) #5.0
-    trailing_kd:          0.4    # D gain on the closing speed (d gap / dt) #2.0
+    trailing_kp:          0.5    # P gain on the gap error (opp_dist - desired_gap) #5.0
+    trailing_kd:          0.5    # D gain on the closing speed (d gap / dt) #2.0
     trailing_max_speed:   2.0    # [m/s] absolute speed cap during trailing
 
     # ── Release ramp (trailing → free) ───────────────────────────────

@@ -49,6 +49,7 @@ PARAMS = {
     'lookahead_k':     0.4,     # [s]   L = k·v  (before clamping)
 
     # ── Speed ─────────────────────────────────────────────────────────
+    'speed_scale':     1.03,    # [—]   global multiplier on waypoint target speed (1.03 = +3%)
     'speed_lookahead': 0.2,     # [s]   propagate position by this to read speed
     'lat_speed_gain':  1.0,     # [≥0]  speed reduction per [m] of lateral error (0=off)
     'delta_speed_gain': 2.0,    # [≥0]  speed reduction per [rad] of steering angle (0=off)
@@ -95,6 +96,7 @@ class PPNode(Node):
         self.lookahead_min   = p('pp_lookahead')
         self.lookahead_max   = p('pp_t_clip_max')
         self.lookahead_k     = p('lookahead_k')
+        self.speed_scale     = p('speed_scale')
         self.speed_la        = p('speed_lookahead')
         self.lat_speed_gain   = p('lat_speed_gain')
         self.delta_speed_gain = p('delta_speed_gain')
@@ -248,6 +250,7 @@ class PPNode(Node):
         speed = float(self.waypoints[idx].vx_mps)
         if speed <= 0.0:
             speed = 1.5
+        speed *= self.speed_scale
 
         return self._speed_adjust_lat_err(speed, lat_err)
 
