@@ -44,30 +44,30 @@ trailing:
     # Trailing is only triggered when the Kalman-estimated opponent position
     # is within corridor_width/2 of the global waypoints ahead of the ego.
     # Opponent on a different part of the track → no trailing.
-    corridor_width:       1.2    # [m]   lateral band around the planned path
+    corridor_width:       0.8    # [m]   lateral band around the planned path
 
     # ── Clustering (Adaptive Breakpoint Detector) ─────────────────────
     lambda_deg:          15.0    # [deg] max admissible incidence angle
-    cluster_sigma:        0.3    # [m]   range-noise term
+    cluster_sigma:        0.5    # [m]   range-noise term #0.3
     min_cluster_points:    10    # drop clusters with fewer points than this
 
     # ── L-shape fitting ───────────────────────────────────────────────
-    max_obs_size:         0.7    # [m]   reject fitted boxes larger than this
+    max_obs_size:         0.4    # [m]   reject fitted boxes larger than this #0.7
     n_angles:              90    # orientation search resolution over [0°, 90°)
 
     # ── Kalman tracking ───────────────────────────────────────────────
-    opp_max_lat:          1.0    # [m]   ignore obstacles farther sideways than this
+    opp_max_lat:          0.5    # [m]   ignore obstacles farther sideways than this
     max_misses:            10    # drop the track after this many consecutive missed frames
     kalman_q:             0.5    # process-noise scale (larger = follow measurements less)
-    kalman_r:           2.5    # measurement-noise scale (larger = trust LiDAR less)
+    kalman_r:           2.0    # measurement-noise scale (larger = trust LiDAR less)
     lidar_to_base_x:     0.27    # [m]   base_link → laser TF offset (x)
 
     # ── Trailing PD speed control ─────────────────────────────────────
-    desired_gap:          3.0    # [m]   gap to hold behind the opponent
-    detect_range:         6.0    # [m]   start trailing reactions within this distance
-    trailing_kp:          5.0    # P gain on the gap error (opp_dist - desired_gap)
-    trailing_kd:          2.0    # D gain on the closing speed (d gap / dt)
-    trailing_max_speed:   3.0    # [m/s] absolute speed cap during trailing
+    desired_gap:          2.5    # [m]   gap to hold behind the opponent
+    detect_range:         8.0    # [m]   start trailing reactions within this distance
+    trailing_kp:          1.0    # P gain on the gap error (opp_dist - desired_gap) #5.0
+    trailing_kd:          0.4    # D gain on the closing speed (d gap / dt) #2.0
+    trailing_max_speed:   2.0    # [m/s] absolute speed cap during trailing
 
     # ── Release ramp (trailing → free) ───────────────────────────────
     # When trailing ends (opponent lost / off-path), the commanded speed is
@@ -82,4 +82,4 @@ trailing:
     # walls from being clustered and misidentified as opponent cars.
     use_map_filter:      true   # set false to disable (e.g. during mapping)
     map_name:            final  # must match the 'map' argument in ppc.launch.xml
-    map_inflation_cells: 5      # inflate occupied mask by N cells (1 cell = 5 cm)
+    map_inflation_cells: 10      # inflate occupied mask by N cells (1 cell = 5 cm) #9

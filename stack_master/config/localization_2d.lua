@@ -56,19 +56,19 @@ TRAJECTORY_BUILDER_2D.use_imu_data = true
 TRAJECTORY_BUILDER_2D.use_online_correlative_scan_matching = true 
 TRAJECTORY_BUILDER_2D.motion_filter.max_angle_radians = math.rad(0.1)
 -- TRAJECTORY_BUILDER_2D.ceres_scan_matcher.translation_weight = 5 --0.01
-TRAJECTORY_BUILDER_2D.ceres_scan_matcher.rotation_weight = 0.1 --25
+TRAJECTORY_BUILDER_2D.ceres_scan_matcher.rotation_weight = 0.1 --25, original = 0.1
 TRAJECTORY_BUILDER_2D.num_accumulated_range_data = 10
 
 POSE_GRAPH.constraint_builder.min_score = 0.60
 POSE_GRAPH.constraint_builder.global_localization_min_score = 0.70
 
 TRAJECTORY_BUILDER.pure_localization_trimmer = {
-  max_submaps_to_keep = 3,
+  max_submaps_to_keep = 5,--3
 }
 POSE_GRAPH.optimize_every_n_nodes = 3 --매핑에 비해 낮춰줘야함
 
-POSE_GRAPH.global_sampling_ratio = 0.03 -- 0.003 -- 전역 매칭 샘플링 비율
-POSE_GRAPH.constraint_builder.fast_correlative_scan_matcher.linear_search_window = 3. -- 선형 검색 범위 (m)
+POSE_GRAPH.global_sampling_ratio = 0.03 -- 0.003 -- 전역 매칭 샘플링 비율, original = 0.03
+POSE_GRAPH.constraint_builder.fast_correlative_scan_matcher.linear_search_window = 3. -- 선형 검색 범위 (m), original = 3
 POSE_GRAPH.constraint_builder.fast_correlative_scan_matcher.angular_search_window = math.rad(30.) -- 각도 검색 범위 (deg)
 
 -- Localization 전용으로 설정
