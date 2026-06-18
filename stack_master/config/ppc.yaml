@@ -17,6 +17,16 @@ pp:
     lat_speed_gain:  0.0      # [≥0]  deceleration gain per [m] lateral error (0=off)
     delta_speed_gain: 0.0     # [≥0]  deceleration gain per [rad] steering angle (0=off)
 
+    # ── Slow start ────────────────────────────────────────────────────
+    # Re-arms whenever the car is (near) stationary (ego_v ≤ slow_start_v_thresh).
+    # On the next launch the speed cap ramps linearly from slow_start_v0 up to
+    # the full target over slow_start_dur seconds.  Re-applies on every restart
+    # from a stop (e.g. an external controller releasing the car).
+    slow_start_enabled:  true  # true = ramp on every launch; false = disable
+    slow_start_dur:      5.0   # [s]   ramp duration
+    slow_start_v0:       2.0   # [m/s] speed cap at t=0
+    slow_start_v_thresh: 0.5   # [m/s] below this ego speed = "stopped"
+
     # ── Steering ──────────────────────────────────────────────────────
     steer_spd_start: 3.0      # [m/s] speed where steer downscaling starts
     steer_spd_end:   6.0      # [m/s] speed where downscaling saturates

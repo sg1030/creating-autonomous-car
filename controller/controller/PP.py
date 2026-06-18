@@ -53,6 +53,17 @@ PARAMS = {
     'lat_speed_gain':  1.0,     # [≥0]  speed reduction per [m] of lateral error (0=off)
     'delta_speed_gain': 2.0,    # [≥0]  speed reduction per [rad] of steering angle (0=off)
 
+    # ── Slow start ─────────────────────────────────────────────────────
+    # Whenever the car is (near) stationary (ego_v ≤ slow_start_v_thresh),
+    # the ramp re-arms.  On the next launch the commanded speed is capped and
+    # ramped linearly from slow_start_v0 up to the full target speed over
+    # slow_start_dur seconds.  Re-applies on every restart from a stop (e.g.
+    # an external controller releasing the car), not just at node startup.
+    'slow_start_enabled':  True,  # true = ramp on every launch; false = off
+    'slow_start_dur':      2.0,   # [s]   ramp duration
+    'slow_start_v0':       1.0,   # [m/s] speed cap at t=0
+    'slow_start_v_thresh': 0.3,   # [m/s] below this ego speed = "stopped"
+
     # ── Steering ──────────────────────────────────────────────────────
     'steer_spd_start': 3.0,     # [m/s] speed at which steer downscaling begins
     'steer_spd_end':   6.0,     # [m/s] speed at which downscaling saturates
@@ -87,6 +98,11 @@ class PPNode(Node):
         self.speed_la        = p('speed_lookahead')
         self.lat_speed_gain   = p('lat_speed_gain')
         self.delta_speed_gain = p('delta_speed_gain')
+        self.slow_start_enabled  = p('slow_start_enabled')
+        self.slow_start_dur      = p('slow_start_dur')
+        self.slow_start_v0       = p('slow_start_v0')
+        self.slow_start_v_thresh = p('slow_start_v_thresh')
+        self._start_time         = None
         self.steer_spd_start  = p('steer_spd_start')
         self.steer_spd_end   = p('steer_spd_end')
         self.steer_downscale = p('steer_downscale')
@@ -205,6 +221,7 @@ class PPNode(Node):
         # ── Step 6: speed ─────────────────────────────────────────────
         speed = self._target_speed(nearest_idx, ego_v, lat_err)
         speed = speed / (1.0 + self.delta_speed_gain * abs(steer))
+        speed = self._apply_slow_start(speed, ego_v)
 
         return steer, speed
 
@@ -237,6 +254,32 @@ class PPNode(Node):
     def _speed_adjust_lat_err(self, speed, lat_err):
         factor = 1.0 / (1.0 + self.lat_speed_gain * lat_err)
         return max(speed * factor, 0.0)
+
+    def _apply_slow_start(self, speed, ego_v):
+        """Cap the commanded speed during launch, ramping the cap linearly
+        from slow_start_v0 up to the full target over slow_start_dur seconds.
+
+        Re-arms every time the car is (near) stationary, so the ramp re-applies
+        on every restart from a stop — e.g. when an external controller releases
+        the car — not only at node startup.  Returns speed unchanged once the
+        ramp finishes or when disabled."""
+        if not self.slow_start_enabled:
+            return speed
+        # Stopped (within noise): disarm the timer and hold the launch cap so
+        # the next move starts gently.
+        if ego_v <= self.slow_start_v_thresh:
+            self._start_time = None
+            return min(speed, self.slow_start_v0)
+        # Moving: start the ramp clock on the first moving step after a stop.
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._start_time is None:
+            self._start_time = now
+        elapsed = now - self._start_time
+        if elapsed >= self.slow_start_dur:
+            return speed
+        t   = elapsed / max(1e-3, self.slow_start_dur)
+        cap = self.slow_start_v0 + t * (speed - self.slow_start_v0)
+        return min(speed, cap)
 
     # ──────────────────────────────────────────────────────────────────
     # Steering helpers
